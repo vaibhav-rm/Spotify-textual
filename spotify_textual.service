@@ -1,0 +1,7 @@
+
+[Unit]
+Description=Spotify Textual terminal client
+
+[Service]
+ExecStart=/usr/bin/spott
+Restart=always

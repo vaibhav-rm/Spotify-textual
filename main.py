@@ -1,4 +1,3 @@
-# main.py — RetroSpotifyApp (Real Album Art & Music Playback)
 import asyncio
 import os
 import random
@@ -41,7 +40,32 @@ ASCII_LOGO = r"""
 """
 
 # ASCII Art Generator for album art
-def generate_ascii_art_from_url(image_url: str, width: int = 30, height: int = 10) -> str:
+def generate_ascii_art_from_image(img, width: int = 40, height: int = 20) -> str:
+    """Generate ASCII art from PIL Image object"""
+    # Convert to grayscale
+    img = img.convert('L')
+    
+    # Resize
+    img = img.resize((width, height), Image.Resampling.LANCZOS)
+    
+    # ASCII characters from dark to light (for dark terminal)
+    # 0 (Black) -> Background (Dark) -> " " or "."
+    # 255 (White) -> Foreground (Bright) -> "@" or "#"
+    ascii_chars = " .:-=+*#%@"
+    
+    ascii_art = []
+    for y in range(height):
+        line = ""
+        for x in range(width):
+            pixel = img.getpixel((x, y))
+            # Map pixel value (0-255) to ASCII character
+            char_index = int((pixel / 255) * (len(ascii_chars) - 1))
+            line += ascii_chars[char_index]
+        ascii_art.append(line)
+    
+    return "\n".join(ascii_art)
+
+def generate_ascii_art_from_url(image_url: str, width: int = 40, height: int = 20) -> str:
     """Generate ASCII art from image URL"""
     try:
         from PIL import Image
@@ -51,31 +75,36 @@ def generate_ascii_art_from_url(image_url: str, width: int = 30, height: int = 1
         response = requests.get(image_url)
         img = Image.open(BytesIO(response.content))
         
-        # Convert to grayscale
-        img = img.convert('L')
-        
-        # Resize
-        img = img.resize((width, height), Image.Resampling.LANCZOS)
-        
-        # ASCII characters from dark to light
-        ascii_chars = "@%#*+=-:. "
-        
-        ascii_art = []
-        for y in range(height):
-            line = ""
-            for x in range(width):
-                pixel = img.getpixel((x, y))
-                # Map pixel value (0-255) to ASCII character
-                char_index = min(pixel // 25, len(ascii_chars) - 1)
-                line += ascii_chars[char_index]
-            ascii_art.append(line)
-        
-        return "\n".join(ascii_art)
+        return generate_ascii_art_from_image(img, width, height)
     except Exception as e:
         # Fallback ASCII art
         return generate_fallback_art()
 
 def generate_fallback_art() -> str:
+    """Generate fallback ASCII art from local file or text"""
+    try:
+        from PIL import Image
+        # Try to load default_cover.png
+        if os.path.exists("default_cover.png"):
+            img = Image.open("default_cover.png")
+            return generate_ascii_art_from_image(img, width=40, height=20)
+    except Exception:
+        pass
+
+    art = [
+        "    .-=-=-=-=-=-=-=-=-=-=-=-=-=-.",
+        "   / .-=-=-=-=-=-=-=-=-=-=-=-=-. \\",
+        "  / / .-=-=-=-=-=-=-=-=-=-=-=-. \\ \\",
+        " / / / .-=-=-=-=-=-=-=-=-=-=-. \\ \\ \\",
+        "| | | |                     | | | |",
+        "| | | |       MUSIC         | | | |",
+        "| | | |                     | | | |",
+        " \\ \\ \\ \\ .-=-=-=-=-=-=-=-=-. / / /",
+        "  \\ \\ \\ .-=-=-=-=-=-=-=-=-=-. / /",
+        "   \\ \\ .-=-=-=-=-=-=-=-=-=-=-. /",
+        "    '-=-=-=-=-=-=-=-=-=-=-=-=-=-'"
+    ]
+    return "\n".join(art)
     """Generate fallback ASCII art when image processing fails"""
     art = [
         "    .-=-=-=-=-=-=-=-=-=-=-=-=-=-.",
@@ -109,13 +138,13 @@ MOCK_PLAYLISTS = [
         "items": [
             Track("Your Top Song", ["Various Artists"], 180, 
                   album_art_url="https://picsum.photos/300/300?random=1",
-                  preview_url="https://www.soundjay.com/misc/sounds/fail-buzzer-02.wav"),
+                  preview_url="sine=f=440:d=30"),
             Track("Winter 2022", ["Seasonal Mix"], 240,
                   album_art_url="https://picsum.photos/300/300?random=2",
-                  preview_url="https://www.soundjay.com/button/sounds/button-09.wav"),
+                  preview_url="sine=f=523:d=30"),
             Track("孤独の発明", ["Tokyo Dream"], 210,
                   album_art_url="https://picsum.photos/300/300?random=3",
-                  preview_url="https://www.soundjay.com/button/sounds/button-09.wav")
+                  preview_url="sine=f=659:d=30")
         ]
     },
     {
@@ -124,13 +153,13 @@ MOCK_PLAYLISTS = [
         "items": [
             Track("a sad yeehaw", ["Cowboy Blues"], 195,
                   album_art_url="https://picsum.photos/300/300?random=4",
-                  preview_url="https://www.soundjay.com/button/sounds/button-09.wav"),
+                  preview_url="sine=f=330:d=30"),
             Track("Disc 1", ["Ambient Collective"], 220,
                   album_art_url="https://picsum.photos/300/300?random=5",
-                  preview_url="https://www.soundjay.com/button/sounds/button-09.wav"),
+                  preview_url="sine=f=392:d=30"),
             Track("Disc 2", ["Ambient Collective"], 215,
                   album_art_url="https://picsum.photos/300/300?random=6",
-                  preview_url="https://www.soundjay.com/button/sounds/button-09.wav")
+                  preview_url="sine=f=494:d=30")
         ]
     },
 ]
@@ -141,17 +170,46 @@ class MusicPlayer:
         self.process = None
         self.is_playing = False
         self.current_track = None
+        self.volume = 100  # 0-100
+        
+    def set_volume(self, volume: int):
+        """Set volume (0-100)"""
+        self.volume = max(0, min(100, volume))
+        # If playing, we would ideally adjust volume, but for subprocess 
+        # we might need to restart. For now, just save for next track.
         
     def play(self, preview_url: str) -> bool:
         """Play audio from URL using system player"""
         try:
             self.stop()  # Stop any currently playing audio
             
+            # Calculate volume parameters
+            # ffplay: 0-100
+            # cvlc: 0-512 (approx 2.56 * percent) or --gain 0-2.0
+            # mpg123: -f <factor> (32768 is max)
+            
+            ffplay_vol = str(self.volume)
+            # vlc volume: 0-256 is 100%. Let's map 0-100 to 0-256
+            vlc_vol = str(int(self.volume * 2.56))
+            
+            # Check for synthetic audio
+            if preview_url.startswith("sine="):
+                # Use ffplay with lavfi filter
+                cmd = ['ffplay', '-f', 'lavfi', '-i', preview_url, '-autoexit', '-nodisp', '-loglevel', 'quiet', '-volume', ffplay_vol]
+                try:
+                    self.process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    self.is_playing = True
+                    return True
+                except FileNotFoundError:
+                    # Fallback to other players if ffplay missing (unlikely if we are here)
+                    pass
+
             # Try different methods to play audio
             players = [
-                ['ffplay', '-nodisp', '-autoexit', '-loglevel', 'quiet', preview_url],  # ffmpeg
-                ['mpg123', '-q', preview_url],  # mpg123
-                ['play', '-q', preview_url],    # sox
+                ['cvlc', '--play-and-exit', '--no-video', '--volume', vlc_vol, preview_url], # VLC
+                ['ffplay', '-nodisp', '-autoexit', '-loglevel', 'quiet', '-volume', ffplay_vol, preview_url],  # ffmpeg
+                ['mpg123', '-q', preview_url],  # mpg123 (no easy volume flag without scale factor math)
+                ['play', '-q', '-v', str(self.volume/100.0), preview_url],    # sox
             ]
             
             for player_cmd in players:
@@ -216,7 +274,8 @@ class AlbumArt(Static):
     def set_art_from_url(self, url: str) -> None:
         """Set album art from URL"""
         try:
-            ascii_art = generate_ascii_art_from_url(url)
+            # Use 40x20 for better aspect ratio (characters are usually 1:2)
+            ascii_art = generate_ascii_art_from_url(url, width=40, height=20)
             self.art_content = ascii_art
         except Exception as e:
             self.art_content = generate_fallback_art()
@@ -333,15 +392,31 @@ class TrackList(Static):
             artists = ', '.join(track.artists)[:30]
             duration = format_duration(track.duration)
             
-            # Show audio indicator if preview is available
-            audio_indicator = "🔊" if track.preview_url else "🔇"
-            
             if idx == self.selected_index:
-                lines.append(f"[reverse]▶ {audio_indicator} {track_name} • {artists} [{duration}][/reverse]")
+                lines.append(f"[reverse]▶ {track_name} • {artists} [{duration}][/reverse]")
             else:
-                lines.append(f"  {audio_indicator} {track_name} • {artists} [{duration}]")
+                lines.append(f"  {track_name} • {artists} [{duration}]")
                 
         return "\n".join(lines)
+
+    def on_click(self, event: events.Click) -> None:
+        """Handle click events to play tracks"""
+        if not self.tracks:
+            return
+            
+        # Map y-coordinate to track index
+        # Account for potential scrolling or padding if any, but Static usually renders from 0
+        # In this simple case, y corresponds to the line number
+        index = event.y
+        
+        if 0 <= index < len(self.tracks):
+            self.selected_index = index
+            self.refresh()
+            
+            # Trigger playback
+            track = self.tracks[index]
+            # Access the app instance to play the track
+            self.app._play_track(track)
 
 # Playlist sidebar widget
 class PlaylistSidebar(Static):
@@ -394,6 +469,28 @@ class PlaylistSidebar(Static):
                 
         lines.append("└" + "─" * 32 + "┘")
         return "\n".join(lines)
+
+    def on_click(self, event: events.Click) -> None:
+        """Handle click events to select playlists"""
+        if not self.playlists:
+            return
+            
+        # Account for header (3 lines)
+        # Line 0: ┌──...
+        # Line 1: │ 🎵 ...
+        # Line 2: ├──...
+        # Line 3: First playlist
+        
+        header_height = 3
+        index = event.y - header_height
+        
+        if 0 <= index < len(self.playlists):
+            self.selected_index = index
+            self.refresh()
+            
+            # Update track list in the app
+            self.app._update_track_list()
+            self.app._stop_track()
 
 # Now Playing Widget
 class NowPlaying(Static):
@@ -521,6 +618,17 @@ class RetroSpotifyApp(App):
         height: auto;
         min-height: 8;
     }
+    
+    .hidden {
+        display: none;
+    }
+    
+    #search_input {
+        margin-bottom: 1;
+        border: solid #00ff88;
+        background: #001133;
+        color: #00ffcc;
+    }
     """
 
     BINDINGS = [
@@ -531,6 +639,9 @@ class RetroSpotifyApp(App):
         ("l", "next_playlist", "Next Playlist"),
         ("h", "previous_playlist", "Previous Playlist"),
         ("r", "refresh", "Refresh"),
+        ("/", "search", "Search"),
+        ("+", "volume_up", "Vol +"),
+        ("-", "volume_down", "Vol -"),
         ("space", "toggle_play", "Play/Pause"),
         ("?", "help", "Help"),
     ]
@@ -560,6 +671,7 @@ class RetroSpotifyApp(App):
                 # Track List
                 with ScrollableContainer(id="track-list-container"):
                     yield Static("[bold]Tracks[/bold]", classes="title")
+                    yield Input(placeholder="Search tracks...", id="search_input", classes="hidden")
                     yield TrackList(id="track_list")
                 
                 # Album Art
@@ -605,7 +717,10 @@ class RetroSpotifyApp(App):
         self.now_playing_info = self.query_one("#now_playing_info", NowPlaying)
         self.music_progress = self.query_one("#music_progress", MusicProgressBar)
         self.status_message = self.query_one("#status_message", Static)
+        self.music_progress = self.query_one("#music_progress", MusicProgressBar)
+        self.status_message = self.query_one("#status_message", Static)
         self.connection_status = self.query_one("#connection_status", Static)
+        self.search_input = self.query_one("#search_input", Input)
         
         # Check initial terminal size
         if self.size and self.size.width < 100:
@@ -631,7 +746,7 @@ class RetroSpotifyApp(App):
 
     async def _authenticate_spotify(self):
         try:
-            scope = "user-read-playback-state user-read-currently-playing playlist-read-private"
+            scope = "user-read-playback-state user-modify-playback-state user-read-currently-playing playlist-read-private"
             auth_manager = SpotifyOAuth(scope=scope, cache_path=".spotify_cache")
             self.sp = spotipy.Spotify(auth_manager=auth_manager)
             
@@ -648,12 +763,43 @@ class RetroSpotifyApp(App):
             if not self.sp:
                 return
                 
-            results = self.sp.current_user_playlists(limit=10)
             playlists = []
+            
+            # 1. Fetch Liked Songs (Saved Tracks)
+            try:
+                saved_tracks_results = self.sp.current_user_saved_tracks(limit=50)
+                liked_tracks = []
+                for item in saved_tracks_results['items']:
+                    track_data = item['track']
+                    if track_data:
+                        album_images = track_data['album']['images']
+                        album_art_url = album_images[0]['url'] if album_images else None
+                        
+                        liked_tracks.append(Track(
+                            name=track_data['name'],
+                            artists=[artist['name'] for artist in track_data['artists']],
+                            duration=track_data['duration_ms'] // 1000,
+                            id=track_data['id'],
+                            album_art_url=album_art_url,
+                            preview_url=track_data.get('preview_url')
+                        ))
+                
+                if liked_tracks:
+                    playlists.append({
+                        'name': 'Liked Songs',
+                        'id': 'liked_songs',
+                        'items': liked_tracks
+                    })
+            except Exception as e:
+                self.notify(f"Failed to load Liked Songs: {e}")
+
+            # 2. Fetch User Playlists
+            results = self.sp.current_user_playlists(limit=20)
             
             for item in results['items']:
                 tracks = []
-                track_results = self.sp.playlist_tracks(item['id'], limit=20)
+                # ... (rest of playlist loading logic)
+                track_results = self.sp.playlist_tracks(item['id'], limit=50)
                 
                 for track_item in track_results['items']:
                     track_data = track_item['track']
@@ -710,15 +856,40 @@ class RetroSpotifyApp(App):
         self.music_progress.play(track.duration)
         self.is_playing = True
         
-        # Play audio if available
+        # Try Spotify Connect first if authenticated
+        if self.sp and track.id:
+            try:
+                # Run in thread to avoid blocking UI
+                def start_playback():
+                    try:
+                        self.sp.start_playback(uris=[f"spotify:track:{track.id}"])
+                        return True
+                    except Exception as e:
+                        return False
+
+                # We can't easily await in this sync method without restructuring, 
+                # but we can fire-and-forget or use a quick check.
+                # For responsiveness, let's try to start it.
+                # NOTE: In a real async TUI, we should await this.
+                # Since _play_track is called from sync context, we'll use a thread.
+                import threading
+                t = threading.Thread(target=start_playback)
+                t.start()
+                
+                self.status_message.update(f"▶️ Spotify Connect: {track.name}")
+                return
+            except Exception:
+                pass
+
+        # Fallback to local audio if available
         if track.preview_url:
             success = self.music_player.play(track.preview_url)
             if success:
-                self.status_message.update(f"▶️ Playing: {track.name}")
+                self.status_message.update(f"▶️ Playing Preview: {track.name}")
             else:
                 self.status_message.update(f"⏸️ Simulating: {track.name} (no audio player)")
         else:
-            self.status_message.update(f"⏸️ Simulating: {track.name} (no preview)")
+            self.status_message.update(f"❌ No active Spotify device & no preview")
             self.music_player.stop()
 
     def _pause_track(self):
@@ -776,6 +947,76 @@ class RetroSpotifyApp(App):
         else:
             self.notify("Refreshed local data")
 
+    def action_search(self):
+        """Toggle search input"""
+        self.search_input.toggle_class("hidden")
+        if not self.search_input.has_class("hidden"):
+            self.search_input.focus()
+
+    def on_input_submitted(self, event: Input.Submitted):
+        """Handle search submission"""
+        query = event.value
+        if not query:
+            return
+            
+        if self.sp:
+            asyncio.create_task(self._perform_search(query))
+        else:
+            # Mock Search
+            self.status_message.update(f"🔍 Searching locally for '{query}'...")
+            query_lower = query.lower()
+            found_tracks = []
+            
+            for playlist in self.playlists:
+                for track in playlist.get('items', []):
+                    if query_lower in track.name.lower() or any(query_lower in a.lower() for a in track.artists):
+                        found_tracks.append(track)
+            
+            if found_tracks:
+                self.track_list.set_tracks(found_tracks)
+                self.status_message.update(f"✅ Found {len(found_tracks)} results")
+            else:
+                self.status_message.update("❌ No results found")
+            
+    async def _perform_search(self, query: str):
+        try:
+            self.status_message.update(f"🔍 Searching for '{query}'...")
+            # Run search in thread to not block UI
+            results = await asyncio.to_thread(self.sp.search, query, limit=20, type='track')
+            
+            tracks = []
+            for track_item in results['tracks']['items']:
+                # Get album art URL
+                album_images = track_item['album']['images']
+                album_art_url = album_images[0]['url'] if album_images else None
+                
+                tracks.append(Track(
+                    name=track_item['name'],
+                    artists=[artist['name'] for artist in track_item['artists']],
+                    duration=track_item['duration_ms'] // 1000,
+                    id=track_item['id'],
+                    album_art_url=album_art_url,
+                    preview_url=track_item.get('preview_url')
+                ))
+            
+            if tracks:
+                self.track_list.set_tracks(tracks)
+                self.status_message.update(f"✅ Found {len(tracks)} results")
+            else:
+                self.status_message.update("❌ No results found")
+                
+        except Exception as e:
+            self.status_message.update("❌ Search failed")
+            self.notify(f"Search error: {e}")
+
+    def action_volume_up(self):
+        self.music_player.set_volume(self.music_player.volume + 10)
+        self.notify(f"Volume: {self.music_player.volume}%")
+        
+    def action_volume_down(self):
+        self.music_player.set_volume(self.music_player.volume - 10)
+        self.notify(f"Volume: {self.music_player.volume}%")
+
     def action_help(self):
         help_text = """
 🎵 RetroSpotify Controls 🎵
@@ -808,7 +1049,7 @@ q - Quit
 
 if __name__ == "__main__":
     # Check for audio players
-    audio_players = ['ffplay', 'mpg123', 'play']
+    audio_players = ['ffplay', 'cvlc', 'vlc', 'mpg123', 'play']
     available_players = []
     
     for player in audio_players:
