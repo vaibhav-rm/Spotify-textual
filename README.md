@@ -42,16 +42,17 @@
     ```
 
 4.  **Spotify Configuration**:
-    You need to create a Spotify App to get credentials.
-    1.  Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/).
-    2.  Create a new app.
-    3.  Set the **Redirect URI** to `http://localhost:8888/callback`.
-    4.  Create a `.env` file in the project root:
+    RetroSpotify features a built-in **Welcome & Authentication Screen** that guides you through connection:
+    1.  Go to the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/).
+    2.  Create a new app. Set the **Redirect URI** to `http://127.0.0.1:8888/callback`.
+    3.  Launch RetroSpotify (`python main.py`).
+    4.  Select **Quick Login (PKCE)**. You will only need your **Client ID** (no client secret required!).
+    5.  The app will open your web browser to authorize access. Once approved, you will be automatically logged in and your details will be saved locally.
 
+    *Alternatively, you can still populate a `.env` file manually:*
     ```env
     SPOTIPY_CLIENT_ID=your_client_id_here
-    SPOTIPY_CLIENT_SECRET=your_client_secret_here
-    SPOTIPY_REDIRECT_URI=http://localhost:8888/callback
+    SPOTIPY_REDIRECT_URI=http://127.0.0.1:8888/callback
     ```
 
 ## 🎮 Usage
@@ -70,10 +71,13 @@ python main.py
 | `Space` / `s` | Play / Pause |
 | `n` | Next Track |
 | `p` | Previous Track |
+| `S` | Toggle Shuffle |
+| `R` | Toggle Repeat |
 | `/` | Search Tracks |
 | `+` / `-` | Volume Up / Down |
 | `l` | Next Playlist |
 | `h` | Previous Playlist |
+| `a` | Go to Authentication Screen |
 | `r` | Refresh Data |
 | `q` | Quit |
 | `?` | Help |

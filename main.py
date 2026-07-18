@@ -3,17 +3,18 @@ import os
 import random
 import time
 import subprocess
+import json
 from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
 from pathlib import Path
-
-from io import BytesIO
+import sys
 
 from dotenv import load_dotenv
-from aiohttp import web
 import requests
+from io import BytesIO
 
 from textual.app import App, ComposeResult
+from textual.screen import Screen
 from textual.containers import Container, Horizontal, Vertical, ScrollableContainer, Grid
 from textual.widgets import Static, Footer, Input, Header, Button, Label, ProgressBar as TextualProgressBar
 from textual import events, log
@@ -24,12 +25,13 @@ from textual.message import Message
 # Optional Spotify imports
 try:
     import spotipy
-    from spotipy.oauth2 import SpotifyOAuth
+    from spotipy.oauth2 import SpotifyOAuth, SpotifyPKCE
     SPOTIPY_AVAILABLE = True
 except ImportError:
     SPOTIPY_AVAILABLE = False
     spotipy = None
     SpotifyOAuth = None
+    SpotifyPKCE = None
 
 # Optional PIL imports
 try:
@@ -50,34 +52,37 @@ ASCII_LOGO = r"""
 |_____/ \___/|_| |_|\__|_|\__|_||_| \_|\__,_|\___|_|
 """
 
-# ASCII Art Generator for album art
-def generate_ascii_art_from_image(img, width: int = 40, height: int = 20) -> str:
-    """Generate ASCII art from PIL Image object"""
+# High-Detail Full-Color ANSI block Art Generator for album art
+def generate_ascii_art_from_image(img, width: int = 28, height: int = 14) -> str:
+    """Generate high-detail full-color ANSI block art from PIL Image object"""
     if Image is None:
         return generate_fallback_art()
-    # Convert to grayscale
-    img = img.convert('L')
     
-    # Resize
-    img = img.resize((width, height), Image.Resampling.LANCZOS)
+    # We want 2 vertical pixels per TUI row, so the resized height should be 2 * height
+    target_height = height * 2
+    img = img.convert('RGB')
+    img = img.resize((width, target_height), Image.Resampling.LANCZOS)
     
-    # ASCII characters from dark to light (for dark terminal)
-    ascii_chars = " .:-=+*#%@"
-    
-    ascii_art = []
-    for y in range(height):
-        line = ""
+    lines = []
+    for y in range(0, target_height, 2):
+        line_chars = []
         for x in range(width):
-            pixel = img.getpixel((x, y))
-            # Map pixel value (0-255) to ASCII character
-            char_index = int((pixel / 255) * (len(ascii_chars) - 1))
-            line += ascii_chars[char_index]
-        ascii_art.append(line)
-    
-    return "\n".join(ascii_art)
+            r1, g1, b1 = img.getpixel((x, y))
+            if y + 1 < target_height:
+                r2, g2, b2 = img.getpixel((x, y + 1))
+            else:
+                r2, g2, b2 = r1, g1, b1
+            
+            fg_color = f"#{r2:02x}{g2:02x}{b2:02x}"
+            bg_color = f"#{r1:02x}{g1:02x}{b1:02x}"
+            line_chars.append(f"[{fg_color} on {bg_color}]▄[/]")
+            
+        lines.append("".join(line_chars))
+        
+    return "\n".join(lines)
 
-def generate_ascii_art_from_url(image_url: str, width: int = 40, height: int = 20) -> str:
-    """Generate ASCII art from image URL"""
+def generate_ascii_art_from_url(image_url: str, width: int = 28, height: int = 14) -> str:
+    """Generate high-detail full-color ANSI block art from image URL"""
     if not PIL_AVAILABLE or not Image:
         return generate_fallback_art()
     try:
@@ -87,14 +92,22 @@ def generate_ascii_art_from_url(image_url: str, width: int = 40, height: int = 2
     except Exception:
         return generate_fallback_art()
 
+def resource_path(relative_path):
+    """ Get absolute path to resource, works for dev and for PyInstaller """
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.abspath(".")
+    return os.path.join(base_path, relative_path)
+
 def generate_fallback_art() -> str:
     """Generate fallback ASCII art from local file or text"""
     if PIL_AVAILABLE and Image:
         try:
-            # Try to load default_cover.png
-            if os.path.exists("default_cover.png"):
-                img = Image.open("default_cover.png")
-                return generate_ascii_art_from_image(img, width=40, height=20)
+            path = resource_path("default_cover.png")
+            if os.path.exists(path):
+                img = Image.open(path)
+                return generate_ascii_art_from_image(img, width=28, height=14)
         except Exception:
             pass
 
@@ -112,6 +125,77 @@ def generate_fallback_art() -> str:
         "    '-=-=-=-=-=-=-=-=-=-=-=-=-=-'"
     ]
     return "\n".join(art)
+
+def generate_retro_synth_wav(duration: float = 30.0) -> str:
+    """Generate a retro 8-bit chiptune melody and return the filepath to the temporary WAV file."""
+    import math
+    import struct
+    import wave
+    import tempfile
+    
+    sample_rate = 22050
+    num_samples = int(duration * sample_rate)
+    
+    temp_dir = tempfile.gettempdir()
+    filepath = os.path.join(temp_dir, "retro_fallback.wav")
+    
+    # C-maj7, A-min7, F-maj7, G-7 progression
+    progression = [
+        [261.63, 329.63, 392.00, 493.88], # C4, E4, G4, B4
+        [220.00, 261.63, 329.63, 392.00], # A3, C4, E4, G4
+        [174.61, 220.00, 261.63, 329.63], # F3, A3, C4, E4
+        [196.00, 246.94, 293.66, 349.23]  # G3, B3, D4, F4
+    ]
+    
+    note_duration = 0.15 # seconds per note
+    samples_per_note = int(note_duration * sample_rate)
+    
+    with wave.open(filepath, 'wb') as wav_file:
+        wav_file.setnchannels(1) # mono
+        wav_file.setsampwidth(2) # 16-bit
+        wav_file.setframerate(sample_rate)
+        
+        note_index = 0
+        chord_index = 0
+        samples_written = 0
+        
+        while samples_written < num_samples:
+            chord = progression[chord_index]
+            freq = chord[note_index]
+            
+            current_note_samples = min(samples_per_note, num_samples - samples_written)
+            
+            data = []
+            for i in range(current_note_samples):
+                t = (samples_written + i) / sample_rate
+                # Square wave
+                val = 1.0 if math.sin(2 * math.pi * freq * t) >= 0 else -1.0
+                
+                # Apply decay envelope
+                envelope = 1.0 - (i / samples_per_note) * 0.4
+                sample_val = int(val * envelope * 8000) # Max amplitude ~8000
+                data.append(struct.pack('<h', sample_val))
+                
+            wav_file.writeframes(b"".join(data))
+            samples_written += current_note_samples
+            
+            note_index = (note_index + 1) % 4
+            if note_index == 0:
+                chord_index = (chord_index + 1) % len(progression)
+                
+    return filepath
+
+def check_cached_token() -> bool:
+    """Check if we have a valid cached Spotify token (or can refresh it)"""
+    try:
+        if os.path.exists(".spotify_cache"):
+            with open(".spotify_cache", "r") as f:
+                data = json.load(f)
+                if (data.get("access_token") and data.get("expires_at", 0) > time.time()) or data.get("refresh_token"):
+                    return True
+    except Exception:
+        pass
+    return False
 
 @dataclass
 class Track:
@@ -169,7 +253,6 @@ class MusicPlayer:
         old_volume = self.volume
         self.volume = max(0, min(100, volume))
         
-        # If playing via ffplay, send volume control commands to stdin
         if self.process and self.process.poll() is None:
             old_step = old_volume // 10
             new_step = self.volume // 10
@@ -190,12 +273,10 @@ class MusicPlayer:
     def play(self, preview_url: str) -> bool:
         """Play audio from URL using system player"""
         try:
-            self.stop()  # Stop any currently playing audio
-            
+            self.stop()
             ffplay_vol = str(self.volume)
             vlc_vol = str(int(self.volume * 2.56))
             
-            # Check for synthetic audio
             if preview_url.startswith("sine="):
                 cmd = ['ffplay', '-f', 'lavfi', '-i', preview_url, '-autoexit', '-nodisp', '-loglevel', 'quiet', '-volume', ffplay_vol]
                 try:
@@ -205,7 +286,6 @@ class MusicPlayer:
                 except FileNotFoundError:
                     pass
 
-            # Try different methods to play audio
             players = [
                 (['ffplay', '-nodisp', '-autoexit', '-loglevel', 'quiet', '-volume', ffplay_vol, preview_url], True),
                 (['cvlc', '--play-and-exit', '--no-video', '--volume', vlc_vol, preview_url], False),
@@ -227,11 +307,10 @@ class MusicPlayer:
                 except FileNotFoundError:
                     continue
             
-            # If no audio player found, simulate playback
             self.is_playing = True
             return False
             
-        except Exception as e:
+        except Exception:
             self.is_playing = False
             return False
     
@@ -282,7 +361,6 @@ def gradient_color(pos: float, start=(29, 185, 84), end=(0, 255, 128)) -> str:
     return f"#{r:02x}{g:02x}{b:02x}"
 
 def format_duration(seconds: int) -> str:
-    """Convert seconds to MM:SS format"""
     minutes = seconds // 60
     seconds = seconds % 60
     return f"{minutes}:{seconds:02d}"
@@ -297,27 +375,35 @@ class AlbumArt(Static):
         self.styles.width = "auto"
         
     def set_art_from_url(self, url: str) -> None:
-        """Set album art from URL"""
-        try:
-            ascii_art = generate_ascii_art_from_url(url, width=40, height=20)
-            self.art_content = ascii_art
-        except Exception:
-            self.art_content = generate_fallback_art()
+        async def load_art():
+            try:
+                def fetch_and_generate():
+                    return generate_ascii_art_from_url(url, width=28, height=14)
+                ascii_art = await asyncio.to_thread(fetch_and_generate)
+                self.art_content = ascii_art
+            except Exception:
+                self.art_content = generate_fallback_art()
+        asyncio.create_task(load_art())
         
     def set_fallback_art(self) -> None:
-        """Set fallback album art"""
         self.art_content = generate_fallback_art()
         
-    def render(self) -> str:
+    def render(self):
         if not self.art_content:
             return "[dim]No album art[/dim]"
+            
+        # If it is high-detail ANSI color block art (contains color brackets/on), return Text directly
+        if "#" in self.art_content or "on" in self.art_content:
+            from rich.text import Text
+            return Text.from_markup(self.art_content)
             
         art_lines = self.art_content.splitlines()
         colored_art = []
         for i, line in enumerate(art_lines):
             color = gradient_color(i / len(art_lines))
             colored_art.append(f"[{color}]{line}[/{color}]")
-        return "\n".join(colored_art)
+        from rich.text import Text
+        return Text.from_markup("\n".join(colored_art))
 
 # Enhanced Progress Bar
 class MusicProgressBar(Static):
@@ -325,7 +411,6 @@ class MusicProgressBar(Static):
     duration = reactive(0)
     
     class TrackEnded(Message):
-        """Sent when the track ends"""
         pass
         
     def __init__(self, **kwargs):
@@ -464,7 +549,6 @@ class TrackList(Static):
             event.prevent_default()
 
     def on_click(self, event: events.Click) -> None:
-        """Handle click events to play tracks"""
         if not self.tracks:
             return
             
@@ -536,7 +620,6 @@ class PlaylistSidebar(Static):
             event.prevent_default()
 
     def on_click(self, event: events.Click) -> None:
-        """Handle click events to select playlists"""
         if not self.playlists:
             return
             
@@ -564,11 +647,15 @@ class NowPlaying(Static):
         track_name = self.current_track.name
         artists = ', '.join(self.current_track.artists)
         
-        if self.current_track.preview_url:
-            if self.current_track.preview_url.startswith("sine="):
-                audio_info = "🔊 [cyan]Local Synth[/cyan]"
-            else:
-                audio_info = "🔊 [green]Spotify Preview[/green]"
+        source = getattr(self.app, "audio_source", "none")
+        if source == "connect":
+            audio_info = "🔊 [green]Spotify Connect[/green]"
+        elif source == "youtube":
+            audio_info = "🔊 [green]YouTube Stream[/green]"
+        elif source == "preview":
+            audio_info = "🔊 [green]Spotify Preview[/green]"
+        elif source == "synth":
+            audio_info = "🔊 [cyan]Local Synth[/cyan]"
         else:
             audio_info = "🔇 [dim]No Audio[/dim]"
             
@@ -593,13 +680,560 @@ class VolumeWidget(Static):
         
         return f"\n{vol_line}\n\n{shuf_status}   {rep_status}"
 
-# Main App
+def open_browser_silently(url):
+    import os
+    import sys
+    import subprocess
+    try:
+        with open(os.devnull, "wb") as devnull:
+            subprocess.Popen(["xdg-open", url], stdout=devnull, stderr=devnull)
+            return
+    except Exception:
+        pass
+    try:
+        import webbrowser
+        null_fd = os.open(os.devnull, os.O_RDWR)
+        old_stdout = os.dup(1)
+        old_stderr = os.dup(2)
+        try:
+            os.dup2(null_fd, 1)
+            os.dup2(null_fd, 2)
+            webbrowser.open(url)
+        finally:
+            os.dup2(old_stdout, 1)
+            os.dup2(old_stderr, 2)
+            os.close(null_fd)
+            os.close(old_stdout)
+            os.close(old_stderr)
+    except Exception:
+        pass
+
+def ensure_spotifyd_binary():
+    import os
+    import urllib.request
+    import tarfile
+    import platform
+    
+    if os.path.exists("./spotifyd"):
+        try:
+            os.chmod("./spotifyd", 0o755)
+        except Exception:
+            pass
+        return True
+        
+    try:
+        arch = platform.machine()
+        if arch == "x86_64":
+            url = "https://github.com/Spotifyd/spotifyd/releases/download/v0.4.2/spotifyd-linux-x86_64-default.tar.gz"
+        elif "arm" in arch or "aarch64" in arch:
+            url = "https://github.com/Spotifyd/spotifyd/releases/download/v0.4.2/spotifyd-linux-aarch64-default.tar.gz"
+        else:
+            return False
+            
+        urllib.request.urlretrieve(url, "spotifyd.tar.gz")
+        with tarfile.open("spotifyd.tar.gz", "r:gz") as tar:
+            tar.extractall()
+        if os.path.exists("spotifyd.tar.gz"):
+            os.remove("spotifyd.tar.gz")
+        os.chmod("./spotifyd", 0o755)
+        return True
+    except Exception:
+        return False
+
+class SpotifydAuthScreen(Screen):
+    def __init__(self, *args, **kwargs):
+        kwargs["id"] = "spotifyd-auth"
+        super().__init__(*args, **kwargs)
+        self.auth_process = None
+        self.auth_url = ""
+        self.polling_task = None
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Container(id="login-container"):
+            yield Static("Local Spotify Player Setup 🔊", id="login-title")
+            
+            # Step 1: Start Auth
+            with Vertical(id="step-init-auth"):
+                yield Label("To stream full-length audio directly from Spotify, we need to authorize our local player daemon (spotifyd).")
+                yield Static("\nThis daemon runs in the background and acts as a local Spotify Connect device.", id="welcome-subtitle")
+                with Horizontal(classes="login-actions-row"):
+                    yield Button("Authorize Player", id="btn-start-auth", variant="success")
+                    yield Button("Skip / Use Fallback", id="btn-skip-auth")
+
+            # Step 2: Waiting for browser
+            with Vertical(id="step-waiting-auth", classes="hidden"):
+                yield Label("1. Click/Open this link in your browser:")
+                auth_url_display = Input(id="spotifyd-auth-url-display")
+                auth_url_display.read_only = True
+                yield auth_url_display
+                
+                with Horizontal(classes="login-actions-row"):
+                    yield Button("Open Link", id="btn-open-spotifyd-link", variant="primary")
+                    yield Button("Cancel", id="btn-cancel-auth")
+                
+                yield Label("\n2. Log in and agree in the browser tab.")
+                yield Static("⏳ Waiting for authentication in browser...", id="spotifyd-auth-status")
+                
+        yield Footer()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-skip-auth":
+            self.app.use_spotifyd = False
+            self.app.switch_screen("player")
+            
+        elif event.button.id == "btn-start-auth":
+            self.query_one("#step-init-auth", Vertical).add_class("hidden")
+            self.query_one("#step-waiting-auth", Vertical).remove_class("hidden")
+            self.run_spotifyd_auth()
+            
+        elif event.button.id == "btn-open-spotifyd-link":
+            if self.auth_url:
+                open_browser_silently(self.auth_url)
+                
+        elif event.button.id == "btn-cancel-auth":
+            self.stop_spotifyd_auth()
+            self.query_one("#step-waiting-auth", Vertical).add_class("hidden")
+            self.query_one("#step-init-auth", Vertical).remove_class("hidden")
+
+    def run_spotifyd_auth(self) -> None:
+        self.stop_spotifyd_auth()
+        try:
+            cmd = ["./spotifyd", "authenticate", "--cache-path", "./spotifyd_cache", "--oauth-port", "8001"]
+            self.auth_process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True
+            )
+            
+            async def find_url():
+                def read_stdout():
+                    for line in self.auth_process.stdout:
+                        if "Browse to:" in line:
+                            return line.split("Browse to:")[1].strip()
+                    return None
+                
+                url = await asyncio.to_thread(read_stdout)
+                if url:
+                    self.auth_url = url
+                    self.query_one("#spotifyd-auth-url-display", Input).value = url
+                    open_browser_silently(url)
+                    self.start_credentials_polling()
+                else:
+                    self.query_one("#spotifyd-auth-status", Static).update("[red]Error starting authentication daemon[/]")
+            
+            asyncio.create_task(find_url())
+            
+        except Exception as e:
+            self.query_one("#spotifyd-auth-status", Static).update(f"[red]Error: {e}[/]")
+
+    def start_credentials_polling(self) -> None:
+        async def poll_credentials():
+            for _ in range(300):
+                if self.app.check_spotifyd_authenticated():
+                    self.stop_spotifyd_auth()
+                    self.app.notify("Spotify Player authorized successfully!")
+                    self.app.start_spotifyd()
+                    self.app.switch_screen("player")
+                    return
+                await asyncio.sleep(1)
+            self.query_one("#spotifyd-auth-status", Static).update("[red]Authentication timed out. Please try again.[/]")
+            self.stop_spotifyd_auth()
+
+        self.polling_task = asyncio.create_task(poll_credentials())
+
+    def stop_spotifyd_auth(self) -> None:
+        if self.polling_task:
+            self.polling_task.cancel()
+            self.polling_task = None
+        if self.auth_process:
+            try:
+                self.auth_process.terminate()
+                self.auth_process.wait(timeout=1)
+            except Exception:
+                try:
+                    self.auth_process.kill()
+                except Exception:
+                    pass
+            self.auth_process = None
+
+
+# Welcome Screen
+class WelcomeScreen(Screen):
+    def __init__(self, *args, **kwargs):
+        kwargs["id"] = "welcome"
+        super().__init__(*args, **kwargs)
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Container(id="welcome-container"):
+            yield Static(ASCII_LOGO, id="welcome-logo")
+            yield Static("Welcome to RetroSpotify", id="welcome-title")
+            yield Static("Select your login mode to begin:", id="welcome-subtitle")
+            
+            with Vertical(id="options-list"):
+                yield Button("1. Quick Login (PKCE - Client ID Only)", id="btn-pkce", variant="success")
+                yield Button("2. Developer Login (Client ID + Client Secret)", id="btn-oauth")
+                yield Button("3. Explore Offline (Mock Mode)", id="btn-mock")
+                
+        yield Footer()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-pkce":
+            self.app.push_screen(LoginScreen(mode="pkce"))
+        elif event.button.id == "btn-oauth":
+            self.app.push_screen(LoginScreen(mode="oauth"))
+        elif event.button.id == "btn-mock":
+            self.app.start_mock_mode()
+
+
+# Login Configuration Screen
+class LoginScreen(Screen):
+    def __init__(self, mode: str = "pkce", *args, **kwargs):
+        kwargs["id"] = "login"
+        super().__init__(*args, **kwargs)
+        self.mode = mode
+        self.auth_manager = None
+        self.auth_url = ""
+        
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with Container(id="login-container"):
+            yield Static(f"Spotify Authentication ({self.mode.upper()})", id="login-title")
+            
+            # Credentials Step Block
+            with Vertical(id="step-credentials"):
+                yield Label("Spotify Client ID:")
+                yield Input(placeholder="Enter Client ID...", id="input-client-id", value=os.getenv("SPOTIPY_CLIENT_ID", ""))
+                
+                if self.mode == "oauth":
+                    yield Label("Spotify Client Secret:")
+                    yield Input(placeholder="Enter Client Secret...", id="input-client-secret", password=True, value=os.getenv("SPOTIPY_CLIENT_SECRET", ""))
+                    
+                yield Label("Redirect URI:")
+                yield Input(placeholder="http://127.0.0.1:8888/callback", id="input-redirect-uri", value=os.getenv("SPOTIPY_REDIRECT_URI", "http://127.0.0.1:8888/callback"))
+                
+                yield Static("", id="login-status-credentials")
+                
+                with Horizontal(classes="login-actions-row"):
+                    yield Button("Next", id="btn-next", variant="success")
+                    yield Button("Cancel", id="btn-cancel-credentials")
+            
+            # Authorize Step Block (initially hidden)
+            with Vertical(id="step-authorize", classes="hidden"):
+                yield Label("1. Click/Open this link in your browser:")
+                auth_url_display = Input(id="auth-url-display")
+                auth_url_display.read_only = True
+                yield auth_url_display
+                yield Button("Copy Link to Clipboard", id="btn-copy-link")
+                
+                yield Label("2. Paste the full redirected browser URL here:")
+                yield Input(placeholder="http://127.0.0.1:8888/callback?code=...", id="input-redirected-url")
+                
+                yield Static("", id="login-status-authorize")
+                
+                with Horizontal(classes="login-actions-row"):
+                    yield Button("Connect", id="btn-connect", variant="success")
+                    yield Button("Back", id="btn-back")
+                
+        yield Footer()
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-cancel-credentials":
+            self.app.pop_screen()
+            
+        elif event.button.id == "btn-next":
+            client_id = self.query_one("#input-client-id", Input).value.strip()
+            redirect_uri = self.query_one("#input-redirect-uri", Input).value.strip()
+            client_secret = ""
+            if self.mode == "oauth":
+                client_secret = self.query_one("#input-client-secret", Input).value.strip()
+                
+            if not client_id:
+                self.query_one("#login-status-credentials", Static).update("[red]Error: Client ID is required[/]")
+                return
+                
+            self.query_one("#login-status-credentials", Static).update("[yellow]Generating authorization link...[/]")
+            
+            # Delete stale cache to prevent "invalid_grant: Refresh token revoked"
+            if os.path.exists(".spotify_cache"):
+                try:
+                    os.remove(".spotify_cache")
+                except Exception:
+                    pass
+            
+            # Save environment variables and config files (only when not in mock/test mode)
+            if not self.app.force_mock:
+                os.environ["SPOTIPY_CLIENT_ID"] = client_id
+                os.environ["SPOTIPY_REDIRECT_URI"] = redirect_uri
+                if client_secret:
+                    os.environ["SPOTIPY_CLIENT_SECRET"] = client_secret
+                else:
+                    os.environ.pop("SPOTIPY_CLIENT_SECRET", None)
+                    
+                with open(".env", "w") as f:
+                    f.write(f"SPOTIPY_CLIENT_ID={client_id}\n")
+                    if client_secret:
+                        f.write(f"SPOTIPY_CLIENT_SECRET={client_secret}\n")
+                    f.write(f"SPOTIPY_REDIRECT_URI={redirect_uri}\n")
+                
+            scope = "user-read-playback-state user-modify-playback-state user-read-currently-playing playlist-read-private"
+            try:
+                if self.mode == "pkce":
+                    self.auth_manager = SpotifyPKCE(client_id=client_id, redirect_uri=redirect_uri, scope=scope, cache_path=".spotify_cache")
+                else:
+                    self.auth_manager = SpotifyOAuth(client_id=client_id, client_secret=client_secret, redirect_uri=redirect_uri, scope=scope, cache_path=".spotify_cache")
+                
+                self.auth_url = self.auth_manager.get_authorize_url()
+                
+                # Switch to authorize step
+                self.query_one("#auth-url-display", Input).value = self.auth_url
+                self.query_one("#step-credentials").add_class("hidden")
+                self.query_one("#step-authorize").remove_class("hidden")
+                
+                # Try opening the browser in background without blocking
+                open_browser_silently(self.auth_url)
+            except Exception as e:
+                self.query_one("#login-status-credentials", Static).update(f"[red]Error: {e}[/]")
+                
+        elif event.button.id == "btn-copy-link":
+            if self.auth_url:
+                self.app.clipboard = self.auth_url
+                self.notify("Link copied to clipboard!")
+                
+        elif event.button.id == "btn-back":
+            # Switch back to credentials step
+            self.query_one("#step-authorize").add_class("hidden")
+            self.query_one("#step-credentials").remove_class("hidden")
+            self.query_one("#login-status-credentials", Static).update("")
+            
+        elif event.button.id == "btn-connect":
+            redirected_url = self.query_one("#input-redirected-url", Input).value.strip()
+            if not redirected_url:
+                self.query_one("#login-status-authorize", Static).update("[red]Error: Redirect URL is required[/]")
+                return
+                
+            self.query_one("#login-status-authorize", Static).update("[yellow]Exchanging code for token...[/]")
+            
+            async def exchange_token():
+                try:
+                    # Run the token exchange in a thread to keep the TUI smooth
+                    def do_exchange():
+                        code = self.auth_manager.parse_response_code(redirected_url)
+                        if self.mode == "pkce":
+                            return self.auth_manager.get_access_token(code)
+                        else:
+                            return self.auth_manager.get_access_token(code, as_dict=False)
+                        
+                    token = await asyncio.to_thread(do_exchange)
+                    if token:
+                        await self.app.initialize_spotify(self.auth_manager)
+                    else:
+                        self.query_one("#login-status-authorize", Static).update("[red]Error: Could not retrieve access token.[/]")
+                except Exception as e:
+                    self.query_one("#login-status-authorize", Static).update(f"[red]Error: {e}[/]")
+                    
+            asyncio.create_task(exchange_token())
+
+
+# Main Player Dashboard Screen
+class MainPlayerScreen(Screen):
+    def __init__(self, *args, **kwargs):
+        kwargs["id"] = "player"
+        super().__init__(*args, **kwargs)
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        
+        with Container(id="main-layout") as main_layout:
+            main_layout.can_focus = False
+            
+            with Horizontal(id="top-row"):
+                sidebar_container = ScrollableContainer(id="playlist-sidebar")
+                sidebar_container.border_title = "LIBRARY"
+                with sidebar_container:
+                    yield PlaylistSidebar(id="sidebar")
+                
+                track_container = ScrollableContainer(id="track-list-container")
+                track_container.border_title = "TRACKS"
+                with track_container:
+                    yield Input(placeholder="🔍 Search tracks (Esc to close)...", id="search_input", classes="hidden")
+                    yield TrackList(id="track_list")
+                
+                art_container = Vertical(id="album-art-container")
+                art_container.border_title = "ALBUM ART"
+                with art_container:
+                    yield AlbumArt(id="album_art")
+            
+            with Horizontal(id="bottom-row"):
+                np_container = Vertical(id="now-playing-container")
+                np_container.border_title = "NOW PLAYING"
+                with np_container:
+                    yield NowPlaying(id="now_playing_info")
+                
+                prog_container = Vertical(id="progress-container")
+                prog_container.border_title = "PROGRESS"
+                with prog_container:
+                    yield MusicProgressBar(id="music_progress")
+
+                vol_container = Vertical(id="volume-container")
+                vol_container.border_title = "CONTROLS"
+                with vol_container:
+                    yield VolumeWidget(id="volume_widget")
+        
+        with Horizontal(id="status-bar"):
+            yield Static("RetroSpotify • Press ? for help", id="status_message")
+            yield Static("", id="connection_status")
+        
+        yield Footer()
+
+    async def on_mount(self) -> None:
+        self.app.sidebar = self.query_one("#sidebar", PlaylistSidebar)
+        self.app.track_list = self.query_one("#track_list", TrackList)
+        self.app.album_art = self.query_one("#album_art", AlbumArt)
+        self.app.now_playing_info = self.query_one("#now_playing_info", NowPlaying)
+        self.app.music_progress = self.query_one("#music_progress", MusicProgressBar)
+        self.app.status_message = self.query_one("#status_message", Static)
+        self.app.connection_status = self.query_one("#connection_status", Static)
+        self.app.search_input = self.query_one("#search_input", Input)
+        self.app.volume_widget = self.query_one("#volume_widget", VolumeWidget)
+        
+        # Check initial size
+        if self.app.size and self.app.size.width < 100:
+            main_layout = self.query_one("#main-layout")
+            main_layout.add_class("compact")
+            self.app.compact_mode = True
+            
+        # Init values
+        self.app.sidebar.set_playlists(self.app.playlists)
+        self.app._update_track_list()
+        
+        self.app.volume_widget.volume = self.app.music_player.volume
+        self.app.volume_widget.shuffle = self.app.shuffle_state
+        self.app.volume_widget.repeat = self.app.repeat_state
+        self.app.album_art.set_fallback_art()
+        
+        if self.app.sp:
+            current_user = self.app.sp.current_user()
+            if current_user:
+                self.app.connection_status.update(f"🔗 {current_user['display_name']}")
+                await self.app._load_spotify_playlists()
+        else:
+            self.app.connection_status.update("🎵 Mock Mode")
+            self.app.status_message.update("RetroSpotify (Mock Mode) • Press 'a' to set up Spotify login")
+
+
+# Main App Container
 class RetroSpotifyApp(App):
     TITLE = "RetroSpotify - Terminal Music Player"
+    
+    SCREENS = {
+        "welcome": WelcomeScreen,
+        "player": MainPlayerScreen,
+    }
+    
     CSS = """
     Screen {
         background: #121212;
         color: #b3b3b3;
+    }
+    
+    WelcomeScreen, LoginScreen {
+        align: center middle;
+    }
+    
+    #welcome-container {
+        align: center middle;
+        text-align: center;
+        background: #121212;
+        padding: 4;
+        border: round #282828;
+        width: 100%;
+        max-width: 70;
+        height: auto;
+    }
+    
+    #welcome-logo {
+        color: #1db954;
+        margin: 0 0 2 0;
+        text-align: center;
+    }
+    
+    #welcome-title {
+        text-style: bold;
+        color: #ffffff;
+        margin: 0 0 1 0;
+        text-align: center;
+    }
+    
+    #welcome-subtitle {
+        color: #b3b3b3;
+        margin: 0 0 2 0;
+        text-align: center;
+    }
+    
+    #options-list {
+        width: 100%;
+        align: center middle;
+    }
+    
+    #options-list Button {
+        width: 100%;
+        margin: 0 0 1 0;
+    }
+    
+    #login-container {
+        align: center middle;
+        background: #121212;
+        padding: 3;
+        border: round #282828;
+        width: 100%;
+        max-width: 60;
+        height: auto;
+    }
+    
+    #login-title {
+        text-style: bold;
+        color: #1db954;
+        margin: 0 0 2 0;
+        text-align: center;
+    }
+    
+    #login-container Label {
+        color: #ffffff;
+        text-style: bold;
+        margin: 1 0 0 0;
+    }
+    
+    #login-container Input {
+        margin: 0 0 1 0;
+        border: solid #282828;
+        background: #181818;
+        color: #ffffff;
+    }
+    #login-container Input:focus {
+        border: solid #1db954;
+    }
+    
+    #login-status, #login-status-credentials, #login-status-authorize {
+        margin: 1 0;
+        text-align: center;
+    }
+    
+    .login-actions-row {
+        layout: horizontal;
+        align: center middle;
+        margin: 1 0 0 0;
+    }
+    
+    .login-actions-row Button {
+        margin: 0 1;
+    }
+    
+    #btn-copy-link {
+        margin: 0 0 1 0;
+        width: 100%;
     }
     
     #header {
@@ -628,7 +1262,7 @@ class RetroSpotifyApp(App):
     }
     
     #playlist-sidebar {
-        width: 25%;
+        width: 20%;
         border: round #282828;
         background: #181818;
         padding: 1;
@@ -638,7 +1272,7 @@ class RetroSpotifyApp(App):
     }
     
     #track-list-container {
-        width: 50%;
+        width: 45%;
         border: round #282828;
         background: #181818;
         padding: 1;
@@ -648,7 +1282,7 @@ class RetroSpotifyApp(App):
     }
     
     #album-art-container {
-        width: 25%;
+        width: 35%;
         border: round #282828;
         background: #181818;
         padding: 1;
@@ -710,6 +1344,80 @@ class RetroSpotifyApp(App):
     .hidden {
         display: none;
     }
+    
+    /* Responsiveness overrides on active Screen classes */
+    
+    /* Narrow Tablet: width < 115 */
+    .narrow-tablet #playlist-sidebar {
+        display: none;
+    }
+    .narrow-tablet #track-list-container {
+        width: 60%;
+    }
+    .narrow-tablet #album-art-container {
+        width: 40%;
+    }
+    
+    /* Narrow Mobile: width < 75 */
+    .narrow-mobile #playlist-sidebar {
+        display: none;
+    }
+    .narrow-mobile #album-art-container {
+        display: none;
+    }
+    .narrow-mobile #track-list-container {
+        width: 100%;
+    }
+    .narrow-mobile #volume-container {
+        display: none;
+    }
+    .narrow-mobile #now-playing-container {
+        width: 40%;
+    }
+    .narrow-mobile #progress-container {
+        width: 60%;
+    }
+    .narrow-mobile #welcome-logo {
+        display: none;
+    }
+    .narrow-mobile #welcome-container {
+        padding: 1 2;
+        border: solid #282828;
+    }
+    .narrow-mobile #login-container {
+        padding: 1 2;
+        border: solid #282828;
+    }
+    
+    /* Short Height: height < 30 */
+    .short-height #album-art-container {
+        display: none;
+    }
+    .short-height #top-row {
+        height: 75%;
+    }
+    .short-height #bottom-row {
+        height: 25%;
+        margin-top: 0;
+    }
+    .short-height #playlist-sidebar {
+        width: 30%;
+    }
+    .short-height #track-list-container {
+        width: 70%;
+    }
+    .short-height.narrow-tablet #track-list-container {
+        width: 100%;
+    }
+    .short-height #welcome-logo {
+        display: none;
+    }
+    .short-height #welcome-container {
+        padding: 1 2;
+    }
+    .short-height #login-container {
+        padding: 1 2;
+    }
     """
 
     BINDINGS = [
@@ -741,116 +1449,175 @@ class RetroSpotifyApp(App):
         self.music_player = MusicPlayer()
         self.shuffle_state = False
         self.repeat_state = "off"
+        self.audio_source = "none"
+        self.use_spotifyd = True
+        self.spotifyd_process = None
 
-    def compose(self) -> ComposeResult:
-        yield Header()
-        
-        with Container(id="main-layout") as main_layout:
-            main_layout.can_focus = False
-            
-            with Horizontal(id="top-row"):
-                sidebar_container = ScrollableContainer(id="playlist-sidebar")
-                sidebar_container.border_title = "LIBRARY"
-                with sidebar_container:
-                    yield PlaylistSidebar(id="sidebar")
-                
-                track_container = ScrollableContainer(id="track-list-container")
-                track_container.border_title = "TRACKS"
-                with track_container:
-                    yield Input(placeholder="🔍 Search tracks (Esc to close)...", id="search_input", classes="hidden")
-                    yield TrackList(id="track_list")
-                
-                art_container = Vertical(id="album-art-container")
-                art_container.border_title = "ALBUM ART"
-                with art_container:
-                    yield AlbumArt(id="album_art")
-            
-            with Horizontal(id="bottom-row"):
-                np_container = Vertical(id="now-playing-container")
-                np_container.border_title = "NOW PLAYING"
-                with np_container:
-                    yield NowPlaying(id="now_playing_info")
-                
-                prog_container = Vertical(id="progress-container")
-                prog_container.border_title = "PROGRESS"
-                with prog_container:
-                    yield MusicProgressBar(id="music_progress")
+    def check_spotifyd_authenticated(self) -> bool:
+        """Check if spotifyd has been authenticated."""
+        if not self.use_spotifyd:
+            return True
+        return os.path.exists("./spotifyd_cache/oauth/credentials.json")
 
-                vol_container = Vertical(id="volume-container")
-                vol_container.border_title = "CONTROLS"
-                with vol_container:
-                    yield VolumeWidget(id="volume_widget")
+    def start_spotifyd(self) -> None:
+        """Start the spotifyd daemon process in the background."""
+        if not self.use_spotifyd or self.force_mock:
+            return
+            
+        self.stop_spotifyd()
         
-        with Horizontal(id="status-bar"):
-            yield Static("RetroSpotify • Press ? for help", id="status_message")
-            yield Static("", id="connection_status")
+        # Ensure cache directory exists
+        os.makedirs("./spotifyd_cache", exist_ok=True)
         
-        yield Footer()
+        # Build command: run spotifyd with configured cache-path and device name
+        cmd = [
+            "./spotifyd",
+            "--no-daemon",
+            "--device-name", "RetroSpotify",
+            "--cache-path", "./spotifyd_cache",
+            "--bitrate", "320"
+        ]
+        try:
+            self.spotifyd_process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        except Exception as e:
+            self.notify(f"Could not start local Spotify player: {e}", severity="warning")
+
+    def stop_spotifyd(self) -> None:
+        """Terminate the spotifyd process cleanly."""
+        if self.spotifyd_process:
+            try:
+                self.spotifyd_process.terminate()
+                self.spotifyd_process.wait(timeout=1)
+            except Exception:
+                try:
+                    self.spotifyd_process.kill()
+                except Exception:
+                    pass
+            self.spotifyd_process = None
+
+    def get_spotifyd_device_id(self) -> Optional[str]:
+        """Look up the Spotify Connect device ID for RetroSpotify."""
+        if not self.sp:
+            return None
+        try:
+            devices_info = self.sp.devices()
+            for device in devices_info.get("devices", []):
+                if device.get("name") == "RetroSpotify":
+                    return device.get("id")
+        except Exception:
+            pass
+        return None
+
+    def update_responsive_classes(self) -> None:
+        """Apply responsiveness classes to the current active screen based on its size."""
+        screen = self.screen
+        if not screen or not self.size:
+            return
+            
+        width = self.size.width
+        height = self.size.height
+        
+        # Width responsiveness
+        if width < 75:
+            screen.add_class("narrow-mobile")
+            screen.remove_class("narrow-tablet")
+        elif width < 115:
+            screen.add_class("narrow-tablet")
+            screen.remove_class("narrow-mobile")
+        else:
+            screen.remove_class("narrow-mobile")
+            screen.remove_class("narrow-tablet")
+            
+        # Height responsiveness
+        if height < 30:
+            screen.add_class("short-height")
+        else:
+            screen.remove_class("short-height")
+            
+        # Maintain legacy compact_mode flag and class on main-layout
+        self.compact_mode = (width < 100)
+        layouts = self.query("#main-layout")
+        if layouts:
+            main_layout = layouts.first()
+            if self.compact_mode:
+                main_layout.add_class("compact")
+            else:
+                main_layout.remove_class("compact")
+
+    def push_screen(self, screen, callback=None):
+        res = super().push_screen(screen, callback)
+        self.call_later(self.update_responsive_classes)
+        return res
+
+    def switch_screen(self, screen):
+        super().switch_screen(screen)
+        self.call_later(self.update_responsive_classes)
 
     def on_resize(self, event: events.Resize) -> None:
-        """Handle terminal resize and switch to compact mode if needed"""
-        main_layout = self.query_one("#main-layout")
-        if event.size.width < 100:
-            if not self.compact_mode:
-                main_layout.add_class("compact")
-                self.compact_mode = True
-        else:
-            if self.compact_mode:
-                main_layout.remove_class("compact")
-                self.compact_mode = False
+        self.update_responsive_classes()
 
     async def on_mount(self) -> None:
-        self.sidebar = self.query_one("#sidebar", PlaylistSidebar)
-        self.track_list = self.query_one("#track_list", TrackList)
-        self.album_art = self.query_one("#album_art", AlbumArt)
-        self.now_playing_info = self.query_one("#now_playing_info", NowPlaying)
-        self.music_progress = self.query_one("#music_progress", MusicProgressBar)
-        self.status_message = self.query_one("#status_message", Static)
-        self.connection_status = self.query_one("#connection_status", Static)
-        self.search_input = self.query_one("#search_input", Input)
-        self.volume_widget = self.query_one("#volume_widget", VolumeWidget)
-        
-        # Check initial terminal size
-        if self.size and self.size.width < 100:
-            main_layout = self.query_one("#main-layout")
-            main_layout.add_class("compact")
-            self.compact_mode = True
-        
-        # Initialize UI
-        self.sidebar.set_playlists(self.playlists)
-        self._update_track_list()
-        
-        # Sync volume widget
-        self.volume_widget.volume = self.music_player.volume
-        self.volume_widget.shuffle = self.shuffle_state
-        self.volume_widget.repeat = self.repeat_state
-        
-        # Spotify authentication
-        if not self.force_mock and SPOTIPY_AVAILABLE and all([
-            os.getenv("SPOTIPY_CLIENT_ID"),
-            os.getenv("SPOTIPY_CLIENT_SECRET"),
-            os.getenv("SPOTIPY_REDIRECT_URI")
-        ]):
-            self.connection_status.update("🔗 Connecting to Spotify...")
-            asyncio.create_task(self._authenticate_spotify())
-        else:
-            self.connection_status.update("🎵 Mock Mode")
-            self.status_message.update("RetroSpotify (Mock Mode) • Press 'a' to set up Spotify login")
+        if not self.force_mock:
+            asyncio.create_task(asyncio.to_thread(ensure_spotifyd_binary))
 
-    async def _authenticate_spotify(self):
-        try:
+        initialized = False
+        if not self.force_mock and check_cached_token() and SPOTIPY_AVAILABLE:
+            client_id = os.getenv("SPOTIPY_CLIENT_ID")
+            client_secret = os.getenv("SPOTIPY_CLIENT_SECRET")
+            redirect_uri = os.getenv("SPOTIPY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
             scope = "user-read-playback-state user-modify-playback-state user-read-currently-playing playlist-read-private"
-            auth_manager = SpotifyOAuth(scope=scope, cache_path=".spotify_cache")
-            self.sp = spotipy.Spotify(auth_manager=auth_manager)
             
-            # Check cached token or attempt check
+            if client_id:
+                try:
+                    if client_secret:
+                        auth_manager = SpotifyOAuth(client_id=client_id, client_secret=client_secret, redirect_uri=redirect_uri, scope=scope, cache_path=".spotify_cache")
+                    else:
+                        auth_manager = SpotifyPKCE(client_id=client_id, redirect_uri=redirect_uri, scope=scope, cache_path=".spotify_cache")
+                        
+                    self.sp = spotipy.Spotify(auth_manager=auth_manager)
+                    current_user = self.sp.current_user()
+                    if current_user:
+                        if self.check_spotifyd_authenticated():
+                            self.start_spotifyd()
+                            self.push_screen("player")
+                        else:
+                            self.push_screen(SpotifydAuthScreen())
+                        initialized = True
+                except Exception:
+                    # Stale or revoked token in cache, clear it
+                    if os.path.exists(".spotify_cache"):
+                        try:
+                            os.remove(".spotify_cache")
+                        except Exception:
+                            pass
+        
+        if not initialized:
+            self.push_screen("welcome")
+
+    async def initialize_spotify(self, auth_manager):
+        try:
+            self.sp = spotipy.Spotify(auth_manager=auth_manager)
             current_user = self.sp.current_user()
             if current_user:
-                self.connection_status.update(f"🔗 {current_user['display_name']}")
-                await self._load_spotify_playlists()
+                if self.screen.id != "player":
+                    if self.check_spotifyd_authenticated():
+                        self.start_spotifyd()
+                        self.switch_screen("player")
+                    else:
+                        self.switch_screen(SpotifydAuthScreen())
         except Exception as e:
-            self.connection_status.update("❌ Spotify Failed")
-            self.notify(f"Spotify auth failed: {e}")
+            self.notify(f"Spotify Connection Error: {e}")
+            if self.screen.id != "welcome":
+                self.switch_screen("welcome")
+
+    def start_mock_mode(self):
+        self.sp = None
+        if self.screen.id != "player":
+            self.switch_screen("player")
 
     async def _load_spotify_playlists(self):
         try:
@@ -859,7 +1626,7 @@ class RetroSpotifyApp(App):
                 
             playlists = []
             
-            # 1. Fetch Liked Songs
+            # Liked Songs
             try:
                 saved_tracks_results = self.sp.current_user_saved_tracks(limit=50)
                 liked_tracks = []
@@ -887,13 +1654,11 @@ class RetroSpotifyApp(App):
             except Exception as e:
                 self.notify(f"Failed to load Liked Songs: {e}")
 
-            # 2. Fetch User Playlists
+            # User Playlists
             results = self.sp.current_user_playlists(limit=20)
-            
             for item in results['items']:
                 tracks = []
                 track_results = self.sp.playlist_tracks(item['id'], limit=50)
-                
                 for track_item in track_results['items']:
                     track_data = track_item['track']
                     if track_data:
@@ -932,8 +1697,6 @@ class RetroSpotifyApp(App):
             self.track_list.set_tracks(tracks)
 
     def _play_track(self, track: Track):
-        """Play a track with real audio"""
-        # If we are resuming the same track
         if self.current_track == track and not self.is_playing:
             self._resume_track()
             return
@@ -941,80 +1704,136 @@ class RetroSpotifyApp(App):
         self.current_track = track
         self.now_playing_info.set_track(track)
         
-        # Update album art
         if track.album_art_url:
             self.album_art.set_art_from_url(track.album_art_url)
         else:
             self.album_art.set_fallback_art()
         
-        # Start progress bar
         self.music_progress.stop()
         self.music_progress.play(track.duration)
         self.is_playing = True
+        self.audio_source = "none"
         
-        # Try Spotify Connect first if authenticated
-        if self.sp and track.id:
-            try:
-                def start_playback():
+        async def handle_playback():
+            success = False
+            if self.sp and track.id:
+                self.status_message.update(f"⏳ Spotify Connect: Trying to play {track.name}...")
+                
+                def start_spotify_playback():
                     try:
-                        self.sp.start_playback(uris=[f"spotify:track:{track.id}"])
+                        # 1. Look up the RetroSpotify device ID
+                        device_id = self.get_spotifyd_device_id()
+                        if device_id:
+                            # Start playback on RetroSpotify device
+                            self.sp.start_playback(device_id=device_id, uris=[f"spotify:track:{track.id}"])
+                            return True
+                        else:
+                            # Fallback: try playing on active device
+                            self.sp.start_playback(uris=[f"spotify:track:{track.id}"])
+                            return True
+                    except Exception:
+                        # 2. Try transferring playback first, then retry
+                        device_id = self.get_spotifyd_device_id()
+                        if device_id:
+                            try:
+                                self.sp.transfer_playback(device_id=device_id, force_play=True)
+                                import time
+                                time.sleep(0.5)
+                                self.sp.start_playback(device_id=device_id, uris=[f"spotify:track:{track.id}"])
+                                return True
+                            except Exception:
+                                pass
+                        return False
+                        
+                success = await asyncio.to_thread(start_spotify_playback)
+                if success:
+                    self.audio_source = "connect"
+                    self.now_playing_info.refresh()
+                    self.status_message.update(f"▶️ Spotify Connect: {track.name}")
+                    return
+            
+            # Local fallback (Spotify Preview URL -> Synth Fallback)
+            self.status_message.update(f"⏳ Loading local audio...")
+            play_url = track.preview_url
+            
+            if not play_url:
+                # Play synthetic retro chiptune as fallback audio
+                try:
+                    play_url = generate_retro_synth_wav(min(30.0, float(track.duration)))
+                except Exception:
+                    play_url = f"sine=f=440:d={track.duration}"
+                
+            def play_local():
+                return self.music_player.play(play_url)
+                
+            local_success = await asyncio.to_thread(play_local)
+            if local_success:
+                if track.preview_url and play_url == track.preview_url:
+                    self.audio_source = "preview"
+                else:
+                    self.audio_source = "synth"
+                self.now_playing_info.refresh()
+                if track.preview_url and play_url == track.preview_url:
+                    self.status_message.update(f"▶️ Local Player (Preview): {track.name}")
+                else:
+                    self.status_message.update(f"▶️ Local Player (Synth Fallback): {track.name}")
+            else:
+                self.audio_source = "none"
+                self.now_playing_info.refresh()
+                self.status_message.update(f"⏸️ Simulating: {track.name} (no local audio player)")
+                
+        asyncio.create_task(handle_playback())
+
+    def _resume_track(self):
+        if not self.current_track:
+            return
+            
+        async def handle_resume():
+            success = False
+            if self.sp and self.current_track.id:
+                self.status_message.update(f"⏳ Spotify Connect: Resuming...")
+                
+                def resume_spotify_playback():
+                    try:
+                        device_id = self.get_spotifyd_device_id()
+                        if device_id:
+                            self.sp.start_playback(device_id=device_id)
+                        else:
+                            self.sp.start_playback()
                         return True
                     except Exception:
                         return False
-
-                import threading
-                t = threading.Thread(target=start_playback)
-                t.start()
-                
-                self.status_message.update(f"▶️ Spotify Connect: {track.name}")
-                return
-            except Exception:
-                pass
-
-        # Fallback to local audio if available
-        if track.preview_url:
-            success = self.music_player.play(track.preview_url)
-            if success:
-                self.status_message.update(f"▶️ Playing Preview: {track.name}")
-            else:
-                self.status_message.update(f"⏸️ Simulating: {track.name} (no audio player)")
-        else:
-            self.status_message.update(f"❌ No active Spotify device & no preview")
-            self.music_player.stop()
-
-    def _resume_track(self):
-        """Resume current track"""
-        if self.current_track:
-            # Try Spotify Connect resume
-            if self.sp and self.current_track.id:
-                try:
-                    def start_playback():
-                        try:
-                            self.sp.start_playback()
-                            return True
-                        except Exception:
-                            return False
-                    import threading
-                    t = threading.Thread(target=start_playback)
-                    t.start()
+                        
+                success = await asyncio.to_thread(resume_spotify_playback)
+                if success:
+                    self.audio_source = "connect"
+                    self.now_playing_info.refresh()
                     self.status_message.update(f"▶️ Spotify Connect: {self.current_track.name}")
                     self.music_progress.play(self.current_track.duration)
                     self.is_playing = True
                     return
-                except Exception:
-                    pass
             
-            # Local player resume
-            success = self.music_player.resume()
-            if success:
+            # Local fallback resume
+            self.status_message.update(f"⏳ Local Player: Resuming...")
+            def resume_local():
+                return self.music_player.resume()
+            local_success = await asyncio.to_thread(resume_local)
+            if local_success:
+                if self.current_track.preview_url:
+                    self.audio_source = "preview"
+                else:
+                    self.audio_source = "synth"
+                self.now_playing_info.refresh()
                 self.status_message.update(f"▶️ Playing: {self.current_track.name}")
                 self.music_progress.play(self.current_track.duration)
                 self.is_playing = True
             else:
+                # If resume fails, start a new playback
                 self._play_track(self.current_track)
+                
+        asyncio.create_task(handle_resume())
 
     def _pause_track(self):
-        """Pause current track"""
         self.music_progress.pause()
         if self.sp and self.current_track and self.current_track.id:
             try:
@@ -1035,15 +1854,16 @@ class RetroSpotifyApp(App):
         self.status_message.update("⏸️ Paused")
 
     def _stop_track(self):
-        """Stop current track completely"""
         self.music_progress.stop()
         self.music_player.stop()
         self.is_playing = False
         self.current_track = None
+        self.audio_source = "none"
+        if hasattr(self, "now_playing_info"):
+            self.now_playing_info.set_track(None)
         self.status_message.update("⏹️ Stopped")
 
     def on_music_progress_track_ended(self, message: MusicProgressBar.TrackEnded) -> None:
-        """Handle track ending by playing the next track (taking repeat/shuffle into account)"""
         if self.repeat_state == 'track':
             if self.current_track:
                 self._play_track(self.current_track)
@@ -1052,6 +1872,8 @@ class RetroSpotifyApp(App):
 
     # Actions
     def action_toggle_play(self):
+        if self.screen.id != "player":
+            return
         current_track = self.track_list.get_selected_track()
         if current_track:
             if self.is_playing and self.current_track == current_track:
@@ -1062,6 +1884,8 @@ class RetroSpotifyApp(App):
                 self._play_track(current_track)
 
     def action_next_track(self):
+        if self.screen.id != "player":
+            return
         if self.shuffle_state:
             current_playlist = self.sidebar.get_selected_playlist()
             if current_playlist:
@@ -1081,6 +1905,8 @@ class RetroSpotifyApp(App):
                     self._play_track(current_track)
 
     def action_previous_track(self):
+        if self.screen.id != "player":
+            return
         if self.track_list.select_previous():
             if self.is_playing:
                 current_track = self.track_list.get_selected_track()
@@ -1088,43 +1914,49 @@ class RetroSpotifyApp(App):
                     self._play_track(current_track)
 
     def action_next_playlist(self):
+        if self.screen.id != "player":
+            return
         if self.sidebar.select_next():
             self._update_track_list()
             self._stop_track()
 
     def action_previous_playlist(self):
+        if self.screen.id != "player":
+            return
         if self.sidebar.select_previous():
             self._update_track_list()
             self._stop_track()
 
     def action_refresh(self):
+        if self.screen.id != "player":
+            return
         if self.sp:
             asyncio.create_task(self._load_spotify_playlists())
         else:
             self.notify("Refreshed local data")
 
     def action_search(self):
-        """Toggle search input"""
+        if self.screen.id != "player":
+            return
         self.search_input.toggle_class("hidden")
         if not self.search_input.has_class("hidden"):
             self.search_input.focus()
 
     def on_input_changed(self, event: Input.Changed):
-        """If search input is cleared, restore the original playlist tracks"""
-        if event.input.id == "search_input" and not event.value:
+        if self.screen.id == "player" and event.input.id == "search_input" and not event.value:
             self._update_track_list()
 
     def on_key(self, event: events.Key) -> None:
-        """Handle global escape key for search input"""
         if event.key == "escape":
-            if not self.search_input.has_class("hidden"):
+            if self.screen.id == "player" and not self.search_input.has_class("hidden"):
                 self.search_input.value = ""
                 self.search_input.add_class("hidden")
                 self._update_track_list()
                 self.track_list.focus()
 
     def on_input_submitted(self, event: Input.Submitted):
-        """Handle search submission"""
+        if self.screen.id != "player":
+            return
         query = event.value
         if not query:
             return
@@ -1132,7 +1964,6 @@ class RetroSpotifyApp(App):
         if self.sp:
             asyncio.create_task(self._perform_search(query))
         else:
-            # Mock Search
             self.status_message.update(f"🔍 Searching locally for '{query}'...")
             query_lower = query.lower()
             found_tracks = []
@@ -1178,16 +2009,38 @@ class RetroSpotifyApp(App):
             self.notify(f"Search error: {e}")
 
     def action_volume_up(self):
+        if self.screen.id != "player":
+            return
         self.music_player.set_volume(self.music_player.volume + 10)
         self.volume_widget.volume = self.music_player.volume
         self.notify(f"Volume: {self.music_player.volume}%")
+        if self.sp and self.audio_source == "connect":
+            def set_spotify_volume():
+                try:
+                    self.sp.volume(self.music_player.volume)
+                except Exception:
+                    pass
+            import threading
+            threading.Thread(target=set_spotify_volume).start()
         
     def action_volume_down(self):
+        if self.screen.id != "player":
+            return
         self.music_player.set_volume(self.music_player.volume - 10)
         self.volume_widget.volume = self.music_player.volume
         self.notify(f"Volume: {self.music_player.volume}%")
+        if self.sp and self.audio_source == "connect":
+            def set_spotify_volume():
+                try:
+                    self.sp.volume(self.music_player.volume)
+                except Exception:
+                    pass
+            import threading
+            threading.Thread(target=set_spotify_volume).start()
 
     def action_toggle_shuffle(self):
+        if self.screen.id != "player":
+            return
         self.shuffle_state = not self.shuffle_state
         self.volume_widget.shuffle = self.shuffle_state
         
@@ -1203,6 +2056,8 @@ class RetroSpotifyApp(App):
         self.notify(f"Shuffle: {'ON' if self.shuffle_state else 'OFF'}")
 
     def action_toggle_repeat(self):
+        if self.screen.id != "player":
+            return
         if self.repeat_state == "off":
             self.repeat_state = "track"
         else:
@@ -1221,51 +2076,8 @@ class RetroSpotifyApp(App):
             
         self.notify(f"Repeat: {self.repeat_state.upper()}")
 
-    async def action_authenticate(self):
-        """Suspend TUI and configure/authenticate Spotify in the terminal"""
-        self.status_message.update("Suspended to authenticate...")
-        self.music_player.stop()
-        
-        with self.suspend():
-            print("\n=== Spotify Configuration & Authentication ===")
-            print("To connect to Spotify, you need a Spotify Client ID and Client Secret.")
-            print("Get them from: https://developer.spotify.com/dashboard/")
-            print("Set redirect URI to: http://127.0.0.1:8888/callback\n")
-            
-            client_id = input(f"Enter Spotify Client ID [{os.getenv('SPOTIPY_CLIENT_ID', 'None')}]: ").strip()
-            client_secret = input(f"Enter Spotify Client Secret [{os.getenv('SPOTIPY_CLIENT_SECRET', 'None')}]: ").strip()
-            redirect_uri = input(f"Enter Redirect URI [{os.getenv('SPOTIPY_REDIRECT_URI', 'http://127.0.0.1:8888/callback')}]: ").strip()
-            
-            if client_id:
-                os.environ["SPOTIPY_CLIENT_ID"] = client_id
-            if client_secret:
-                os.environ["SPOTIPY_CLIENT_SECRET"] = client_secret
-            if redirect_uri:
-                os.environ["SPOTIPY_REDIRECT_URI"] = redirect_uri
-                
-            with open(".env", "w") as f:
-                f.write(f"SPOTIPY_CLIENT_ID={os.environ.get('SPOTIPY_CLIENT_ID', '')}\n")
-                f.write(f"SPOTIPY_CLIENT_SECRET={os.environ.get('SPOTIPY_CLIENT_SECRET', '')}\n")
-                f.write(f"SPOTIPY_REDIRECT_URI={os.environ.get('SPOTIPY_REDIRECT_URI', 'http://127.0.0.1:8888/callback')}\n")
-                
-            print("\nCredentials saved to .env!")
-            print("Starting authentication flow... A browser window should open.")
-            
-            try:
-                scope = "user-read-playback-state user-modify-playback-state user-read-currently-playing playlist-read-private"
-                auth_manager = SpotifyOAuth(scope=scope, cache_path=".spotify_cache")
-                token = auth_manager.get_access_token(as_dict=False)
-                if token:
-                    print("🎉 Success! Authenticated successfully.")
-                else:
-                    print("⚠️ Could not retrieve access token.")
-            except Exception as e:
-                print(f"❌ Error during authentication: {e}")
-                
-            input("\nPress Enter to return to RetroSpotify...")
-            
-        self.force_mock = False
-        asyncio.create_task(self._authenticate_spotify())
+    def action_authenticate(self):
+        self.switch_screen("welcome")
 
     def action_help(self):
         help_text = """
@@ -1282,7 +2094,7 @@ h - Previous Playlist
 r - Refresh Data
 
 [bold]Spotify Settings:[/bold]
-a - Connect/Auth Spotify
+a - Connect/Auth Spotify Screen
 S - Toggle Shuffle
 R - Toggle Repeat
 
@@ -1300,7 +2112,12 @@ q - Quit
 
     def action_quit(self):
         self.music_player.stop()
+        self.stop_spotifyd()
         self.exit()
+
+    def on_unmount(self):
+        self.music_player.stop()
+        self.stop_spotifyd()
 
 if __name__ == "__main__":
     audio_players = ['ffplay', 'cvlc', 'vlc', 'mpg123', 'play']
@@ -1327,15 +2144,20 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     if SPOTIPY_AVAILABLE:
-        required_vars = ["SPOTIPY_CLIENT_ID", "SPOTIPY_CLIENT_SECRET", "SPOTIPY_REDIRECT_URI"]
+        # SPOTIPY_CLIENT_SECRET is optional (not needed for PKCE Quick Login)
+        required_vars = ["SPOTIPY_CLIENT_ID", "SPOTIPY_REDIRECT_URI"]
         missing_vars = [var for var in required_vars if not os.getenv(var)]
         
         if missing_vars or args.mock:
-            print("🎵 RetroSpotify - Running in mock mode")
-            if missing_vars and not args.mock:
-                print("💡 To use Spotify, set these environment variables:")
-                for var in missing_vars:
-                    print(f"   {var}=your_value_here")
+            if args.mock:
+                print("🎵 RetroSpotify - Running in mock mode")
+            else:
+                print("🎵 RetroSpotify - Ready for connection")
+                print("💡 Tip: You can configure your credentials directly in the app's Welcome Screen,")
+                print("   or set these optional environment variables:")
+                for var in required_vars + ["SPOTIPY_CLIENT_SECRET"]:
+                    if not os.getenv(var):
+                        print(f"   {var}=your_value_here")
     
     app = RetroSpotifyApp(force_mock=args.mock)
     app.run()
