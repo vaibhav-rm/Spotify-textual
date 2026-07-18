@@ -37,5 +37,5 @@ if __name__ == "__main__":
         print("⚠️ No audio players found! This is likely why you can't hear anything.")
         print("Please install ffmpeg (which provides ffplay) or mpg123.")
     
-    url = "https://www.soundjay.com/misc/sounds/fail-buzzer-02.wav"
+    url = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
     check_url(url)

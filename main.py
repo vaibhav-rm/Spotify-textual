@@ -17,6 +17,7 @@ from textual.widgets import Static, Footer, Input, Header, Button, Label, Progre
 from textual import events, log
 from textual.reactive import reactive
 from textual.geometry import Size
+from textual.message import Message
 
 # Optional Spotify imports
 try:
@@ -27,6 +28,14 @@ except ImportError:
     SPOTIPY_AVAILABLE = False
     spotipy = None
     SpotifyOAuth = None
+
+# Optional PIL imports
+try:
+    from PIL import Image
+    PIL_AVAILABLE = True
+except ImportError:
+    PIL_AVAILABLE = False
+    Image = None
 
 load_dotenv()
 
@@ -42,6 +51,8 @@ ASCII_LOGO = r"""
 # ASCII Art Generator for album art
 def generate_ascii_art_from_image(img, width: int = 40, height: int = 20) -> str:
     """Generate ASCII art from PIL Image object"""
+    if Image is None:
+        return generate_fallback_art()
     # Convert to grayscale
     img = img.convert('L')
     
@@ -49,8 +60,6 @@ def generate_ascii_art_from_image(img, width: int = 40, height: int = 20) -> str
     img = img.resize((width, height), Image.Resampling.LANCZOS)
     
     # ASCII characters from dark to light (for dark terminal)
-    # 0 (Black) -> Background (Dark) -> " " or "."
-    # 255 (White) -> Foreground (Bright) -> "@" or "#"
     ascii_chars = " .:-=+*#%@"
     
     ascii_art = []
@@ -67,45 +76,26 @@ def generate_ascii_art_from_image(img, width: int = 40, height: int = 20) -> str
 
 def generate_ascii_art_from_url(image_url: str, width: int = 40, height: int = 20) -> str:
     """Generate ASCII art from image URL"""
+    if not PIL_AVAILABLE or not Image:
+        return generate_fallback_art()
     try:
-        from PIL import Image
-        import requests
-        from io import BytesIO
-        
         response = requests.get(image_url)
-        img = Image.open(BytesIO(response.content))
-        
+        img = Image.open(requests.compat.BytesIO(response.content))
         return generate_ascii_art_from_image(img, width, height)
-    except Exception as e:
-        # Fallback ASCII art
+    except Exception:
         return generate_fallback_art()
 
 def generate_fallback_art() -> str:
     """Generate fallback ASCII art from local file or text"""
-    try:
-        from PIL import Image
-        # Try to load default_cover.png
-        if os.path.exists("default_cover.png"):
-            img = Image.open("default_cover.png")
-            return generate_ascii_art_from_image(img, width=40, height=20)
-    except Exception:
-        pass
+    if PIL_AVAILABLE and Image:
+        try:
+            # Try to load default_cover.png
+            if os.path.exists("default_cover.png"):
+                img = Image.open("default_cover.png")
+                return generate_ascii_art_from_image(img, width=40, height=20)
+        except Exception:
+            pass
 
-    art = [
-        "    .-=-=-=-=-=-=-=-=-=-=-=-=-=-.",
-        "   / .-=-=-=-=-=-=-=-=-=-=-=-=-. \\",
-        "  / / .-=-=-=-=-=-=-=-=-=-=-=-. \\ \\",
-        " / / / .-=-=-=-=-=-=-=-=-=-=-. \\ \\ \\",
-        "| | | |                     | | | |",
-        "| | | |       MUSIC         | | | |",
-        "| | | |                     | | | |",
-        " \\ \\ \\ \\ .-=-=-=-=-=-=-=-=-. / / /",
-        "  \\ \\ \\ .-=-=-=-=-=-=-=-=-=-. / /",
-        "   \\ \\ .-=-=-=-=-=-=-=-=-=-=-. /",
-        "    '-=-=-=-=-=-=-=-=-=-=-=-=-=-'"
-    ]
-    return "\n".join(art)
-    """Generate fallback ASCII art when image processing fails"""
     art = [
         "    .-=-=-=-=-=-=-=-=-=-=-=-=-=-.",
         "   / .-=-=-=-=-=-=-=-=-=-=-=-=-. \\",
@@ -174,48 +164,59 @@ class MusicPlayer:
         
     def set_volume(self, volume: int):
         """Set volume (0-100)"""
+        old_volume = self.volume
         self.volume = max(0, min(100, volume))
-        # If playing, we would ideally adjust volume, but for subprocess 
-        # we might need to restart. For now, just save for next track.
+        
+        # If playing via ffplay, send volume control commands to stdin
+        if self.process and self.process.poll() is None:
+            old_step = old_volume // 10
+            new_step = self.volume // 10
+            diff = new_step - old_step
+            if diff > 0:
+                try:
+                    self.process.stdin.write(b'0' * diff)
+                    self.process.stdin.flush()
+                except Exception:
+                    pass
+            elif diff < 0:
+                try:
+                    self.process.stdin.write(b'9' * abs(diff))
+                    self.process.stdin.flush()
+                except Exception:
+                    pass
         
     def play(self, preview_url: str) -> bool:
         """Play audio from URL using system player"""
         try:
             self.stop()  # Stop any currently playing audio
             
-            # Calculate volume parameters
-            # ffplay: 0-100
-            # cvlc: 0-512 (approx 2.56 * percent) or --gain 0-2.0
-            # mpg123: -f <factor> (32768 is max)
-            
             ffplay_vol = str(self.volume)
-            # vlc volume: 0-256 is 100%. Let's map 0-100 to 0-256
             vlc_vol = str(int(self.volume * 2.56))
             
             # Check for synthetic audio
             if preview_url.startswith("sine="):
-                # Use ffplay with lavfi filter
                 cmd = ['ffplay', '-f', 'lavfi', '-i', preview_url, '-autoexit', '-nodisp', '-loglevel', 'quiet', '-volume', ffplay_vol]
                 try:
-                    self.process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    self.process = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     self.is_playing = True
                     return True
                 except FileNotFoundError:
-                    # Fallback to other players if ffplay missing (unlikely if we are here)
                     pass
 
             # Try different methods to play audio
             players = [
-                ['cvlc', '--play-and-exit', '--no-video', '--volume', vlc_vol, preview_url], # VLC
-                ['ffplay', '-nodisp', '-autoexit', '-loglevel', 'quiet', '-volume', ffplay_vol, preview_url],  # ffmpeg
-                ['mpg123', '-q', preview_url],  # mpg123 (no easy volume flag without scale factor math)
-                ['play', '-q', '-v', str(self.volume/100.0), preview_url],    # sox
+                (['ffplay', '-nodisp', '-autoexit', '-loglevel', 'quiet', '-volume', ffplay_vol, preview_url], True),
+                (['cvlc', '--play-and-exit', '--no-video', '--volume', vlc_vol, preview_url], False),
+                (['mpg123', '-q', preview_url], False),
+                (['play', '-q', '-v', str(self.volume/100.0), preview_url], False),
             ]
             
-            for player_cmd in players:
+            for player_cmd, support_stdin in players:
                 try:
+                    stdin_val = subprocess.PIPE if support_stdin else None
                     self.process = subprocess.Popen(
                         player_cmd,
+                        stdin=stdin_val,
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL
                     )
@@ -229,10 +230,33 @@ class MusicPlayer:
             return False
             
         except Exception as e:
-            print(f"Audio playback error: {e}")
             self.is_playing = False
             return False
     
+    def pause(self) -> bool:
+        """Pause playback"""
+        if self.process and self.process.poll() is None and self.is_playing:
+            try:
+                self.process.stdin.write(b'p')
+                self.process.stdin.flush()
+                self.is_playing = False
+                return True
+            except Exception:
+                pass
+        return False
+        
+    def resume(self) -> bool:
+        """Resume playback"""
+        if self.process and self.process.poll() is None and not self.is_playing:
+            try:
+                self.process.stdin.write(b'p')
+                self.process.stdin.flush()
+                self.is_playing = True
+                return True
+            except Exception:
+                pass
+        return False
+
     def stop(self):
         """Stop currently playing audio"""
         if self.process and self.process.poll() is None:
@@ -244,13 +268,12 @@ class MusicPlayer:
     def toggle(self, preview_url: str) -> bool:
         """Toggle play/pause"""
         if self.is_playing:
-            self.stop()
-            return False
+            return self.pause()
         else:
-            return self.play(preview_url)
+            return self.resume() or self.play(preview_url)
 
 # Visual helpers
-def gradient_color(pos: float, start=(0, 255, 100), end=(100, 200, 255)) -> str:
+def gradient_color(pos: float, start=(29, 185, 84), end=(0, 255, 128)) -> str:
     r = int(start[0] + (end[0] - start[0]) * pos)
     g = int(start[1] + (end[1] - start[1]) * pos)
     b = int(start[2] + (end[2] - start[2]) * pos)
@@ -274,10 +297,9 @@ class AlbumArt(Static):
     def set_art_from_url(self, url: str) -> None:
         """Set album art from URL"""
         try:
-            # Use 40x20 for better aspect ratio (characters are usually 1:2)
             ascii_art = generate_ascii_art_from_url(url, width=40, height=20)
             self.art_content = ascii_art
-        except Exception as e:
+        except Exception:
             self.art_content = generate_fallback_art()
         
     def set_fallback_art(self) -> None:
@@ -300,6 +322,10 @@ class MusicProgressBar(Static):
     progress = reactive(0.0)
     duration = reactive(0)
     
+    class TrackEnded(Message):
+        """Sent when the track ends"""
+        pass
+        
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.playing = False
@@ -314,7 +340,15 @@ class MusicProgressBar(Static):
             elapsed = time.time() - self.start_time
             self.current_position = min(self.duration, elapsed)
             self.progress = self.current_position / self.duration
-            self.refresh()
+            
+            if self.current_position >= self.duration:
+                self.playing = False
+                self.current_position = 0
+                self.progress = 0
+                self.refresh()
+                self.post_message(self.TrackEnded())
+            else:
+                self.refresh()
             
     def play(self, duration: int) -> None:
         self.duration = duration
@@ -333,23 +367,21 @@ class MusicProgressBar(Static):
         
     def render(self) -> str:
         if self.duration == 0:
-            return "[dim]--:-- / --:--[/dim]"
+            return "\n[dim]--:-- / --:--[/dim]"
             
-        width = max(20, (self.size.width - 10) if self.size else 50)
+        width = max(10, (self.size.width - 14) if self.size else 35)
         filled_width = int(self.progress * width)
-        
-        # Create progress bar with different characters for visual effect
-        bar = "█" * filled_width + "░" * (width - filled_width)
+        bar = "█" * filled_width + "─" * (width - filled_width)
         
         elapsed = int(self.current_position)
         total = self.duration
         elapsed_str = format_duration(elapsed)
         total_str = format_duration(total)
         
-        # Add playing indicator
-        indicator = "▶" if self.playing else "⏸"
+        controls = "⏮   ▶   ⏭" if self.playing else "⏮   ⏸   ⏭"
+        total_line_w = width + 12
         
-        return f"{indicator} [{gradient_color(self.progress)}]{bar}[/] {elapsed_str} / {total_str}"
+        return f"[bold white]{controls:^{total_line_w}}[/bold white]\n\n{elapsed_str} [#1db954]{bar}[/] {total_str}"
 
 # Track list widget
 class TrackList(Static):
@@ -357,6 +389,7 @@ class TrackList(Static):
         super().__init__(**kwargs)
         self.tracks = []
         self.selected_index = 0
+        self.can_focus = True
         
     def set_tracks(self, tracks: List[Track]) -> None:
         self.tracks = tracks
@@ -386,36 +419,58 @@ class TrackList(Static):
         if not self.tracks:
             return "[dim]No tracks available[/dim]"
             
-        lines = []
+        width = self.size.width if self.size else 60
+        num_w = 4
+        dur_w = 6
+        remaining = width - num_w - dur_w - 6
+        if remaining < 10:
+            remaining = 10
+        title_w = int(remaining * 0.6)
+        artist_w = remaining - title_w
+        
+        header = f"[dim]{'#'.ljust(num_w)} {'Title'.ljust(title_w)} {'Artist'.ljust(artist_w)} {'Duration'.rjust(dur_w)}[/dim]"
+        divider = f"[dim]{'─' * width}[/dim]"
+        
+        lines = [header, divider]
         for idx, track in enumerate(self.tracks):
-            track_name = track.name[:35]
-            artists = ', '.join(track.artists)[:30]
+            track_num = f"{idx + 1}"
+            track_name = track.name
+            artists = ', '.join(track.artists)
             duration = format_duration(track.duration)
             
+            t_name = track_name[:title_w].ljust(title_w)
+            t_artists = artists[:artist_w].ljust(artist_w)
+            
             if idx == self.selected_index:
-                lines.append(f"[reverse]▶ {track_name} • {artists} [{duration}][/reverse]")
+                lines.append(f"[bold #1db954]▶   {t_name} {t_artists} {duration.rjust(dur_w)}[/bold #1db954]")
             else:
-                lines.append(f"  {track_name} • {artists} [{duration}]")
+                lines.append(f"[dim]{track_num.ljust(num_w)}[/dim] [white]{t_name}[/white] [dim]{t_artists}[/dim] [dim]{duration.rjust(dur_w)}[/dim]")
                 
         return "\n".join(lines)
+
+    def on_key(self, event: events.Key) -> None:
+        if event.key == "up":
+            self.select_previous()
+            event.prevent_default()
+        elif event.key == "down":
+            self.select_next()
+            event.prevent_default()
+        elif event.key == "enter":
+            track = self.get_selected_track()
+            if track:
+                self.app._play_track(track)
+            event.prevent_default()
 
     def on_click(self, event: events.Click) -> None:
         """Handle click events to play tracks"""
         if not self.tracks:
             return
             
-        # Map y-coordinate to track index
-        # Account for potential scrolling or padding if any, but Static usually renders from 0
-        # In this simple case, y corresponds to the line number
-        index = event.y
-        
+        index = event.y - 2
         if 0 <= index < len(self.tracks):
             self.selected_index = index
             self.refresh()
-            
-            # Trigger playback
             track = self.tracks[index]
-            # Access the app instance to play the track
             self.app._play_track(track)
 
 # Playlist sidebar widget
@@ -424,6 +479,7 @@ class PlaylistSidebar(Static):
         super().__init__(**kwargs)
         self.playlists = []
         self.selected_index = 0
+        self.can_focus = True
         
     def set_playlists(self, playlists: List[Dict]) -> None:
         self.playlists = playlists
@@ -453,42 +509,39 @@ class PlaylistSidebar(Static):
         if not self.playlists:
             return "[dim]No playlists[/dim]"
             
-        lines = ["┌" + "─" * 32 + "┐"]
-        lines.append("│ [bold cyan]🎵 YOUR PLAYLISTS[/bold cyan] │")
-        lines.append("├" + "─" * 32 + "┤")
-        
+        lines = []
         for idx, playlist in enumerate(self.playlists):
-            prefix = "🎧 " if idx == self.selected_index else "  "
-            name = playlist['name'][:26]
+            name = playlist['name']
             track_count = len(playlist.get('items', []))
             
             if idx == self.selected_index:
-                lines.append(f"│[reverse {gradient_color(idx/len(self.playlists))}] {prefix}{name} ({track_count})[/] │")
+                lines.append(f"[bold #1db954]▶ 🎧 {name} ({track_count})[/bold #1db954]")
             else:
-                lines.append(f"│ {prefix}{name.ljust(28)}│")
+                lines.append(f"   🎧 {name}")
                 
-        lines.append("└" + "─" * 32 + "┘")
         return "\n".join(lines)
+
+    def on_key(self, event: events.Key) -> None:
+        if event.key == "up":
+            self.select_previous()
+            self.app._update_track_list()
+            self.app._stop_track()
+            event.prevent_default()
+        elif event.key == "down":
+            self.select_next()
+            self.app._update_track_list()
+            self.app._stop_track()
+            event.prevent_default()
 
     def on_click(self, event: events.Click) -> None:
         """Handle click events to select playlists"""
         if not self.playlists:
             return
             
-        # Account for header (3 lines)
-        # Line 0: ┌──...
-        # Line 1: │ 🎵 ...
-        # Line 2: ├──...
-        # Line 3: First playlist
-        
-        header_height = 3
-        index = event.y - header_height
-        
+        index = event.y
         if 0 <= index < len(self.playlists):
             self.selected_index = index
             self.refresh()
-            
-            # Update track list in the app
             self.app._update_track_list()
             self.app._stop_track()
 
@@ -504,130 +557,156 @@ class NowPlaying(Static):
         
     def render(self) -> str:
         if not self.current_track:
-            return "[dim]No track playing[/dim]"
+            return "[dim]No track playing[/dim]\n\n[dim]Select a track and press Space/s to play[/dim]"
             
         track_name = self.current_track.name
         artists = ', '.join(self.current_track.artists)
-        audio_info = "🔊 Audio Available" if self.current_track.preview_url else "🔇 No Preview"
         
-        return f"[bold]{track_name}[/bold]\n[dim]by {artists}[/dim]\n{audio_info}"
+        if self.current_track.preview_url:
+            if self.current_track.preview_url.startswith("sine="):
+                audio_info = "🔊 [cyan]Local Synth[/cyan]"
+            else:
+                audio_info = "🔊 [green]Spotify Preview[/green]"
+        else:
+            audio_info = "🔇 [dim]No Audio[/dim]"
+            
+        return f"[bold white]{track_name}[/bold white]\n[#b3b3b3]by {artists}[/#b3b3b3]\n\n{audio_info}"
+
+# Volume & Control Widget
+class VolumeWidget(Static):
+    volume = reactive(100)
+    shuffle = reactive(False)
+    repeat = reactive("off")
+    
+    def render(self) -> str:
+        vol_width = 10
+        filled = int((self.volume / 100.0) * vol_width)
+        vol_bar = "█" * filled + "─" * (vol_width - filled)
+        
+        vol_color = gradient_color(self.volume / 100.0)
+        vol_line = f"🔊 [{vol_color}]{vol_bar}[/] {self.volume}%"
+        
+        shuf_status = "[bold #1db954]SHUF[/]" if self.shuffle else "[dim]SHUF[/]"
+        rep_status = "[bold #1db954]REP[/]" if self.repeat == "track" else "[dim]REP[/]"
+        
+        return f"\n{vol_line}\n\n{shuf_status}   {rep_status}"
 
 # Main App
 class RetroSpotifyApp(App):
     TITLE = "RetroSpotify - Terminal Music Player"
     CSS = """
     Screen {
-        background: #000011;
-        color: #00ff88;
+        background: #121212;
+        color: #b3b3b3;
     }
     
     #header {
         height: 3;
-        background: #001122;
-        border: solid #00ff88;
-        margin: 1;
+        background: #000000;
+        border: none;
+        margin: 0;
         padding: 0 1;
+        color: #ffffff;
     }
     
     #main-layout {
         height: 1fr;
-        margin: 1;
+        margin: 1 1 0 1;
     }
     
     #top-row {
-        height: 60%;
+        height: 65%;
         layout: horizontal;
     }
     
     #bottom-row {
-        height: 40%;
+        height: 35%;
         layout: horizontal;
         margin-top: 1;
     }
     
     #playlist-sidebar {
-        width: 30%;
-        border: solid #00ff88;
+        width: 25%;
+        border: round #282828;
+        background: #181818;
         padding: 1;
-        background: #001133;
+    }
+    #playlist-sidebar:focus-within {
+        border: round #1db954;
     }
     
     #track-list-container {
-        width: 40%;
-        border: solid #00ff88;
+        width: 50%;
+        border: round #282828;
+        background: #181818;
         padding: 1;
-        background: #001133;
+    }
+    #track-list-container:focus-within {
+        border: round #1db954;
     }
     
     #album-art-container {
-        width: 30%;
-        border: solid #00ff88;
+        width: 25%;
+        border: round #282828;
+        background: #181818;
         padding: 1;
-        background: #001133;
+        align: center middle;
+    }
+    #album-art-container:focus-within {
+        border: round #1db954;
     }
     
     #now-playing-container {
-        width: 50%;
-        border: solid #00ff88;
+        width: 30%;
+        border: round #282828;
+        background: #181818;
         padding: 1;
-        background: #001133;
+    }
+    #now-playing-container:focus-within {
+        border: round #1db954;
     }
     
     #progress-container {
-        width: 50%;
-        border: solid #00ff88;
+        width: 45%;
+        border: round #282828;
+        background: #181818;
         padding: 1;
-        background: #001133;
+    }
+    #progress-container:focus-within {
+        border: round #1db954;
+    }
+    
+    #volume-container {
+        width: 25%;
+        border: round #282828;
+        background: #181818;
+        padding: 1;
+    }
+    #volume-container:focus-within {
+        border: round #1db954;
     }
     
     #status-bar {
         height: 3;
-        background: #001122;
-        border: solid #00ff88;
-        margin: 1;
+        background: #000000;
+        border: none;
+        margin: 0;
         padding: 0 1;
-    }
-    
-    .title {
-        text-style: bold;
-        color: #00ffcc;
-        margin-bottom: 1;
-    }
-    
-    /* Compact layout for smaller terminals */
-    #main-layout.compact {
-        layout: vertical;
-    }
-    
-    #main-layout.compact #top-row {
-        height: auto;
-        layout: vertical;
-    }
-    
-    #main-layout.compact #bottom-row {
-        height: auto;
-        layout: vertical;
-    }
-    
-    #main-layout.compact #playlist-sidebar,
-    #main-layout.compact #track-list-container,
-    #main-layout.compact #album-art-container,
-    #main-layout.compact #now-playing-container,
-    #main-layout.compact #progress-container {
-        width: 100%;
-        height: auto;
-        min-height: 8;
-    }
-    
-    .hidden {
-        display: none;
+        color: #b3b3b3;
     }
     
     #search_input {
         margin-bottom: 1;
-        border: solid #00ff88;
-        background: #001133;
-        color: #00ffcc;
+        border: solid #282828;
+        background: #121212;
+        color: #ffffff;
+    }
+    #search_input:focus {
+        border: solid #1db954;
+    }
+    
+    .hidden {
+        display: none;
     }
     """
 
@@ -642,18 +721,24 @@ class RetroSpotifyApp(App):
         ("/", "search", "Search"),
         ("+", "volume_up", "Vol +"),
         ("-", "volume_down", "Vol -"),
+        ("S", "toggle_shuffle", "Shuffle"),
+        ("R", "toggle_repeat", "Repeat"),
+        ("a", "authenticate", "Auth Spotify"),
         ("space", "toggle_play", "Play/Pause"),
         ("?", "help", "Help"),
     ]
 
-    def __init__(self):
+    def __init__(self, force_mock: bool = False):
         super().__init__()
+        self.force_mock = force_mock
         self.playlists: List[Dict] = MOCK_PLAYLISTS.copy()
         self.is_playing = False
         self.sp = None
         self.current_track = None
         self.compact_mode = False
         self.music_player = MusicPlayer()
+        self.shuffle_state = False
+        self.repeat_state = "off"
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -661,37 +746,39 @@ class RetroSpotifyApp(App):
         with Container(id="main-layout") as main_layout:
             main_layout.can_focus = False
             
-            # Top Row: Playlists, Track List, Album Art
             with Horizontal(id="top-row"):
-                # Playlist Sidebar
-                with Vertical(id="playlist-sidebar"):
-                    yield Static("[bold]Playlists[/bold]", classes="title")
+                sidebar_container = ScrollableContainer(id="playlist-sidebar")
+                sidebar_container.border_title = "LIBRARY"
+                with sidebar_container:
                     yield PlaylistSidebar(id="sidebar")
                 
-                # Track List
-                with ScrollableContainer(id="track-list-container"):
-                    yield Static("[bold]Tracks[/bold]", classes="title")
-                    yield Input(placeholder="Search tracks...", id="search_input", classes="hidden")
+                track_container = ScrollableContainer(id="track-list-container")
+                track_container.border_title = "TRACKS"
+                with track_container:
+                    yield Input(placeholder="🔍 Search tracks (Esc to close)...", id="search_input", classes="hidden")
                     yield TrackList(id="track_list")
                 
-                # Album Art
-                with Vertical(id="album-art-container"):
-                    yield Static("[bold]Album Art[/bold]", classes="title")
+                art_container = Vertical(id="album-art-container")
+                art_container.border_title = "ALBUM ART"
+                with art_container:
                     yield AlbumArt(id="album_art")
             
-            # Bottom Row: Now Playing & Progress
             with Horizontal(id="bottom-row"):
-                # Now Playing Info
-                with Vertical(id="now-playing-container"):
-                    yield Static("[bold]Now Playing[/bold]", classes="title")
+                np_container = Vertical(id="now-playing-container")
+                np_container.border_title = "NOW PLAYING"
+                with np_container:
                     yield NowPlaying(id="now_playing_info")
                 
-                # Progress Container
-                with Vertical(id="progress-container"):
-                    yield Static("[bold]Progress[/bold]", classes="title")
+                prog_container = Vertical(id="progress-container")
+                prog_container.border_title = "PROGRESS"
+                with prog_container:
                     yield MusicProgressBar(id="music_progress")
+
+                vol_container = Vertical(id="volume-container")
+                vol_container.border_title = "CONTROLS"
+                with vol_container:
+                    yield VolumeWidget(id="volume_widget")
         
-        # Status Bar
         with Horizontal(id="status-bar"):
             yield Static("RetroSpotify • Press ? for help", id="status_message")
             yield Static("", id="connection_status")
@@ -717,10 +804,9 @@ class RetroSpotifyApp(App):
         self.now_playing_info = self.query_one("#now_playing_info", NowPlaying)
         self.music_progress = self.query_one("#music_progress", MusicProgressBar)
         self.status_message = self.query_one("#status_message", Static)
-        self.music_progress = self.query_one("#music_progress", MusicProgressBar)
-        self.status_message = self.query_one("#status_message", Static)
         self.connection_status = self.query_one("#connection_status", Static)
         self.search_input = self.query_one("#search_input", Input)
+        self.volume_widget = self.query_one("#volume_widget", VolumeWidget)
         
         # Check initial terminal size
         if self.size and self.size.width < 100:
@@ -732,8 +818,13 @@ class RetroSpotifyApp(App):
         self.sidebar.set_playlists(self.playlists)
         self._update_track_list()
         
+        # Sync volume widget
+        self.volume_widget.volume = self.music_player.volume
+        self.volume_widget.shuffle = self.shuffle_state
+        self.volume_widget.repeat = self.repeat_state
+        
         # Spotify authentication
-        if SPOTIPY_AVAILABLE and all([
+        if not self.force_mock and SPOTIPY_AVAILABLE and all([
             os.getenv("SPOTIPY_CLIENT_ID"),
             os.getenv("SPOTIPY_CLIENT_SECRET"),
             os.getenv("SPOTIPY_REDIRECT_URI")
@@ -742,7 +833,7 @@ class RetroSpotifyApp(App):
             asyncio.create_task(self._authenticate_spotify())
         else:
             self.connection_status.update("🎵 Mock Mode")
-            self.status_message.update("RetroSpotify (Mock Mode) • Install ffplay/mpg123 for audio")
+            self.status_message.update("RetroSpotify (Mock Mode) • Press 'a' to set up Spotify login")
 
     async def _authenticate_spotify(self):
         try:
@@ -750,6 +841,7 @@ class RetroSpotifyApp(App):
             auth_manager = SpotifyOAuth(scope=scope, cache_path=".spotify_cache")
             self.sp = spotipy.Spotify(auth_manager=auth_manager)
             
+            # Check cached token or attempt check
             current_user = self.sp.current_user()
             if current_user:
                 self.connection_status.update(f"🔗 {current_user['display_name']}")
@@ -765,7 +857,7 @@ class RetroSpotifyApp(App):
                 
             playlists = []
             
-            # 1. Fetch Liked Songs (Saved Tracks)
+            # 1. Fetch Liked Songs
             try:
                 saved_tracks_results = self.sp.current_user_saved_tracks(limit=50)
                 liked_tracks = []
@@ -798,17 +890,13 @@ class RetroSpotifyApp(App):
             
             for item in results['items']:
                 tracks = []
-                # ... (rest of playlist loading logic)
                 track_results = self.sp.playlist_tracks(item['id'], limit=50)
                 
                 for track_item in track_results['items']:
                     track_data = track_item['track']
                     if track_data:
-                        # Get album art URL
                         album_images = track_data['album']['images']
                         album_art_url = album_images[0]['url'] if album_images else None
-                        
-                        # Get preview URL
                         preview_url = track_data.get('preview_url')
                         
                         tracks.append(Track(
@@ -843,6 +931,11 @@ class RetroSpotifyApp(App):
 
     def _play_track(self, track: Track):
         """Play a track with real audio"""
+        # If we are resuming the same track
+        if self.current_track == track and not self.is_playing:
+            self._resume_track()
+            return
+            
         self.current_track = track
         self.now_playing_info.set_track(track)
         
@@ -853,25 +946,20 @@ class RetroSpotifyApp(App):
             self.album_art.set_fallback_art()
         
         # Start progress bar
+        self.music_progress.stop()
         self.music_progress.play(track.duration)
         self.is_playing = True
         
         # Try Spotify Connect first if authenticated
         if self.sp and track.id:
             try:
-                # Run in thread to avoid blocking UI
                 def start_playback():
                     try:
                         self.sp.start_playback(uris=[f"spotify:track:{track.id}"])
                         return True
-                    except Exception as e:
+                    except Exception:
                         return False
 
-                # We can't easily await in this sync method without restructuring, 
-                # but we can fire-and-forget or use a quick check.
-                # For responsiveness, let's try to start it.
-                # NOTE: In a real async TUI, we should await this.
-                # Since _play_track is called from sync context, we'll use a thread.
                 import threading
                 t = threading.Thread(target=start_playback)
                 t.start()
@@ -892,10 +980,55 @@ class RetroSpotifyApp(App):
             self.status_message.update(f"❌ No active Spotify device & no preview")
             self.music_player.stop()
 
+    def _resume_track(self):
+        """Resume current track"""
+        if self.current_track:
+            # Try Spotify Connect resume
+            if self.sp and self.current_track.id:
+                try:
+                    def start_playback():
+                        try:
+                            self.sp.start_playback()
+                            return True
+                        except Exception:
+                            return False
+                    import threading
+                    t = threading.Thread(target=start_playback)
+                    t.start()
+                    self.status_message.update(f"▶️ Spotify Connect: {self.current_track.name}")
+                    self.music_progress.play(self.current_track.duration)
+                    self.is_playing = True
+                    return
+                except Exception:
+                    pass
+            
+            # Local player resume
+            success = self.music_player.resume()
+            if success:
+                self.status_message.update(f"▶️ Playing: {self.current_track.name}")
+                self.music_progress.play(self.current_track.duration)
+                self.is_playing = True
+            else:
+                self._play_track(self.current_track)
+
     def _pause_track(self):
         """Pause current track"""
         self.music_progress.pause()
-        self.music_player.stop()
+        if self.sp and self.current_track and self.current_track.id:
+            try:
+                def pause_playback():
+                    try:
+                        self.sp.pause_playback()
+                        return True
+                    except Exception:
+                        return False
+                import threading
+                t = threading.Thread(target=pause_playback)
+                t.start()
+            except Exception:
+                pass
+        
+        self.music_player.pause()
         self.is_playing = False
         self.status_message.update("⏸️ Paused")
 
@@ -907,17 +1040,38 @@ class RetroSpotifyApp(App):
         self.current_track = None
         self.status_message.update("⏹️ Stopped")
 
+    def on_music_progress_track_ended(self, message: MusicProgressBar.TrackEnded) -> None:
+        """Handle track ending by playing the next track (taking repeat/shuffle into account)"""
+        if self.repeat_state == 'track':
+            if self.current_track:
+                self._play_track(self.current_track)
+        else:
+            self.action_next_track()
+
     # Actions
     def action_toggle_play(self):
         current_track = self.track_list.get_selected_track()
         if current_track:
             if self.is_playing and self.current_track == current_track:
                 self._pause_track()
+            elif not self.is_playing and self.current_track == current_track:
+                self._resume_track()
             else:
-                # If different track or not playing, start playing
                 self._play_track(current_track)
 
     def action_next_track(self):
+        if self.shuffle_state:
+            current_playlist = self.sidebar.get_selected_playlist()
+            if current_playlist:
+                tracks = current_playlist.get('items', [])
+                if tracks:
+                    rand_idx = random.randint(0, len(tracks) - 1)
+                    self.track_list.selected_index = rand_idx
+                    self.track_list.refresh()
+                    if self.is_playing:
+                        self._play_track(tracks[rand_idx])
+                    return
+        
         if self.track_list.select_next():
             if self.is_playing:
                 current_track = self.track_list.get_selected_track()
@@ -934,12 +1088,12 @@ class RetroSpotifyApp(App):
     def action_next_playlist(self):
         if self.sidebar.select_next():
             self._update_track_list()
-            self._stop_track()  # Stop playback when changing playlists
+            self._stop_track()
 
     def action_previous_playlist(self):
         if self.sidebar.select_previous():
             self._update_track_list()
-            self._stop_track()  # Stop playback when changing playlists
+            self._stop_track()
 
     def action_refresh(self):
         if self.sp:
@@ -952,6 +1106,20 @@ class RetroSpotifyApp(App):
         self.search_input.toggle_class("hidden")
         if not self.search_input.has_class("hidden"):
             self.search_input.focus()
+
+    def on_input_changed(self, event: Input.Changed):
+        """If search input is cleared, restore the original playlist tracks"""
+        if event.input.id == "search_input" and not event.value:
+            self._update_track_list()
+
+    def on_key(self, event: events.Key) -> None:
+        """Handle global escape key for search input"""
+        if event.key == "escape":
+            if not self.search_input.has_class("hidden"):
+                self.search_input.value = ""
+                self.search_input.add_class("hidden")
+                self._update_track_list()
+                self.track_list.focus()
 
     def on_input_submitted(self, event: Input.Submitted):
         """Handle search submission"""
@@ -981,12 +1149,10 @@ class RetroSpotifyApp(App):
     async def _perform_search(self, query: str):
         try:
             self.status_message.update(f"🔍 Searching for '{query}'...")
-            # Run search in thread to not block UI
             results = await asyncio.to_thread(self.sp.search, query, limit=20, type='track')
             
             tracks = []
             for track_item in results['tracks']['items']:
-                # Get album art URL
                 album_images = track_item['album']['images']
                 album_art_url = album_images[0]['url'] if album_images else None
                 
@@ -1011,11 +1177,93 @@ class RetroSpotifyApp(App):
 
     def action_volume_up(self):
         self.music_player.set_volume(self.music_player.volume + 10)
+        self.volume_widget.volume = self.music_player.volume
         self.notify(f"Volume: {self.music_player.volume}%")
         
     def action_volume_down(self):
         self.music_player.set_volume(self.music_player.volume - 10)
+        self.volume_widget.volume = self.music_player.volume
         self.notify(f"Volume: {self.music_player.volume}%")
+
+    def action_toggle_shuffle(self):
+        self.shuffle_state = not self.shuffle_state
+        self.volume_widget.shuffle = self.shuffle_state
+        
+        if self.sp:
+            def set_shuffle():
+                try:
+                    self.sp.shuffle(state=self.shuffle_state)
+                except Exception:
+                    pass
+            import threading
+            threading.Thread(target=set_shuffle).start()
+            
+        self.notify(f"Shuffle: {'ON' if self.shuffle_state else 'OFF'}")
+
+    def action_toggle_repeat(self):
+        if self.repeat_state == "off":
+            self.repeat_state = "track"
+        else:
+            self.repeat_state = "off"
+            
+        self.volume_widget.repeat = self.repeat_state
+        
+        if self.sp:
+            def set_repeat():
+                try:
+                    self.sp.repeat(state=self.repeat_state)
+                except Exception:
+                    pass
+            import threading
+            threading.Thread(target=set_repeat).start()
+            
+        self.notify(f"Repeat: {self.repeat_state.upper()}")
+
+    async def action_authenticate(self):
+        """Suspend TUI and configure/authenticate Spotify in the terminal"""
+        self.status_message.update("Suspended to authenticate...")
+        self.music_player.stop()
+        
+        with self.suspend():
+            print("\n=== Spotify Configuration & Authentication ===")
+            print("To connect to Spotify, you need a Spotify Client ID and Client Secret.")
+            print("Get them from: https://developer.spotify.com/dashboard/")
+            print("Set redirect URI to: http://127.0.0.1:8888/callback\n")
+            
+            client_id = input(f"Enter Spotify Client ID [{os.getenv('SPOTIPY_CLIENT_ID', 'None')}]: ").strip()
+            client_secret = input(f"Enter Spotify Client Secret [{os.getenv('SPOTIPY_CLIENT_SECRET', 'None')}]: ").strip()
+            redirect_uri = input(f"Enter Redirect URI [{os.getenv('SPOTIPY_REDIRECT_URI', 'http://127.0.0.1:8888/callback')}]: ").strip()
+            
+            if client_id:
+                os.environ["SPOTIPY_CLIENT_ID"] = client_id
+            if client_secret:
+                os.environ["SPOTIPY_CLIENT_SECRET"] = client_secret
+            if redirect_uri:
+                os.environ["SPOTIPY_REDIRECT_URI"] = redirect_uri
+                
+            with open(".env", "w") as f:
+                f.write(f"SPOTIPY_CLIENT_ID={os.environ.get('SPOTIPY_CLIENT_ID', '')}\n")
+                f.write(f"SPOTIPY_CLIENT_SECRET={os.environ.get('SPOTIPY_CLIENT_SECRET', '')}\n")
+                f.write(f"SPOTIPY_REDIRECT_URI={os.environ.get('SPOTIPY_REDIRECT_URI', 'http://127.0.0.1:8888/callback')}\n")
+                
+            print("\nCredentials saved to .env!")
+            print("Starting authentication flow... A browser window should open.")
+            
+            try:
+                scope = "user-read-playback-state user-modify-playback-state user-read-currently-playing playlist-read-private"
+                auth_manager = SpotifyOAuth(scope=scope, cache_path=".spotify_cache")
+                token = auth_manager.get_access_token(as_dict=False)
+                if token:
+                    print("🎉 Success! Authenticated successfully.")
+                else:
+                    print("⚠️ Could not retrieve access token.")
+            except Exception as e:
+                print(f"❌ Error during authentication: {e}")
+                
+            input("\nPress Enter to return to RetroSpotify...")
+            
+        self.force_mock = False
+        asyncio.create_task(self._authenticate_spotify())
 
     def action_help(self):
         help_text = """
@@ -1030,6 +1278,11 @@ p - Previous Track
 l - Next Playlist
 h - Previous Playlist
 r - Refresh Data
+
+[bold]Spotify Settings:[/bold]
+a - Connect/Auth Spotify
+S - Toggle Shuffle
+R - Toggle Repeat
 
 [bold]Audio Requirements:[/bold]
 Install one of these for real audio:
@@ -1048,7 +1301,6 @@ q - Quit
         self.exit()
 
 if __name__ == "__main__":
-    # Check for audio players
     audio_players = ['ffplay', 'cvlc', 'vlc', 'mpg123', 'play']
     available_players = []
     
@@ -1067,15 +1319,21 @@ if __name__ == "__main__":
         print("   macOS: brew install ffmpeg")
         print("   Windows: Download from https://ffmpeg.org/")
     
+    import argparse
+    parser = argparse.ArgumentParser(description="RetroSpotify - Terminal Music Player")
+    parser.add_argument("--mock", action="store_true", help="Force mock mode (no Spotify connection)")
+    args = parser.parse_args()
+    
     if SPOTIPY_AVAILABLE:
         required_vars = ["SPOTIPY_CLIENT_ID", "SPOTIPY_CLIENT_SECRET", "SPOTIPY_REDIRECT_URI"]
         missing_vars = [var for var in required_vars if not os.getenv(var)]
         
-        if missing_vars:
+        if missing_vars or args.mock:
             print("🎵 RetroSpotify - Running in mock mode")
-            print("💡 To use Spotify, set these environment variables:")
-            for var in missing_vars:
-                print(f"   {var}=your_value_here")
+            if missing_vars and not args.mock:
+                print("💡 To use Spotify, set these environment variables:")
+                for var in missing_vars:
+                    print(f"   {var}=your_value_here")
     
-    app = RetroSpotifyApp()
+    app = RetroSpotifyApp(force_mock=args.mock)
     app.run()
