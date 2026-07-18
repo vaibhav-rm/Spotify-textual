@@ -7,6 +7,8 @@ from typing import List, Optional, Dict, Any
 from dataclasses import dataclass
 from pathlib import Path
 
+from io import BytesIO
+
 from dotenv import load_dotenv
 from aiohttp import web
 import requests
@@ -80,7 +82,7 @@ def generate_ascii_art_from_url(image_url: str, width: int = 40, height: int = 2
         return generate_fallback_art()
     try:
         response = requests.get(image_url)
-        img = Image.open(requests.compat.BytesIO(response.content))
+        img = Image.open(BytesIO(response.content))
         return generate_ascii_art_from_image(img, width, height)
     except Exception:
         return generate_fallback_art()

@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RetroSpotify - Premium Terminal Music Player</title>
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="A gorgeous, highly customized Spotify client for the terminal. Built using Python, Textual, and Pillow, with real-time volume adjustment, local synth fallback, and full keyboard navigation.">
+    <meta name="keywords" content="Spotify, Terminal, TUI, Textual, Python, Audio Player, Command Line, Music">
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom Styleheet -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar" id="navbar">
+        <div class="nav-container">
+            <a href="#" class="nav-logo">
+                <img src="logo.png" alt="RetroSpotify Logo">
+                <span>RetroSpotify</span>
+            </a>
+            <div class="nav-links">
+                <a href="#features">Features</a>
+                <a href="#shortcuts">Shortcuts</a>
+                <a href="#installation">Installation</a>
+                <a href="#setup">Setup</a>
+                <a href="https://github.com" target="_blank" class="nav-btn"><i class="fab fa-github"></i> GitHub</a>
+            </div>
+            <button class="mobile-toggle" id="mobile-toggle">
+                <i class="fas fa-bars"></i>
+            </button>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <header class="hero">
+        <div class="hero-glow"></div>
+        <div class="hero-container">
+            <div class="hero-content">
+                <div class="badge"><i class="fas fa-music"></i> Terminal TUI Client</div>
+                <h1>RetroSpotify</h1>
+                <p class="subtitle">Where Nostalgic Terminal Visuals Meet Modern Streaming Luxury.</p>
+                <p class="description">Experience Spotify like never before. Featuring a rich, fully responsive terminal user interface, dynamic ASCII album art, fine-grained volume controls, and intuitive keyboard navigation.</p>
+                <div class="hero-actions">
+                    <a href="#installation" class="btn btn-primary">Get Started <i class="fas fa-arrow-right"></i></a>
+                    <a href="#shortcuts" class="btn btn-secondary">Explore Keys <i class="fas fa-keyboard"></i></a>
+                </div>
+            </div>
+            <div class="hero-visual">
+                <div class="screenshot-wrapper">
+                    <img src="screenshot.png" alt="RetroSpotify App Interface" class="app-screenshot">
+                    <div class="screenshot-glow"></div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Features Section -->
+    <section class="section" id="features">
+        <div class="container">
+            <div class="section-header">
+                <h2>Why RetroSpotify?</h2>
+                <p>Designed for power users, audiophiles, and terminal enthusiasts.</p>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon"><i class="fas fa-bolt"></i></div>
+                    <h3>True Stdin Control</h3>
+                    <p>Unlike standard wrappers, RetroSpotify pipes raw controls directly to ffplay for instant play, pause, and volume changes.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon"><i class="fas fa-palette"></i></div>
+                    <h3>Spotify Aesthetic</h3>
+                    <p>Immerse yourself in a carefully calibrated dark design using modern layouts, highlighted borders on focus, and rich ASCII color gradients.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon"><i class="fas fa-forward"></i></div>
+                    <h3>Auto-Advancing Tracks</h3>
+                    <p>Sit back and enjoy your playlists. Tracks automatically transition to the next queue item when they finish playing.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon"><i class="fas fa-search"></i></div>
+                    <h3>Instant Search</h3>
+                    <p>Press <kbd>/</kbd> to quickly search your playlists and tracks. Press <kbd>Esc</kbd> to return to your library view instantly.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon"><i class="fas fa-shuffle"></i></div>
+                    <h3>Shuffle & Repeat</h3>
+                    <p>Toggle random playback or repeat mode locally or directly on Spotify Connect devices using dedicated keys.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon"><i class="fas fa-wifi"></i></div>
+                    <h3>Spotify Connect</h3>
+                    <p>Control playback on active smart speakers, web browsers, or desktops via the integrated Spotify Web API.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Interactive Shortcuts Section -->
+    <section class="section alt-bg" id="shortcuts">
+        <div class="container">
+            <div class="section-header">
+                <h2>Interactive Keyboard Controls</h2>
+                <p>Navigate the player effortlessly without touching your mouse. Click any key to view its action.</p>
+            </div>
+            
+            <div class="keyboard-explorer">
+                <div class="keyboard-grid">
+                    <!-- Row 1 -->
+                    <button class="key" data-key="space" style="grid-column: span 5;">Space (Play/Pause)</button>
+                    <button class="key" data-key="q">Q (Quit)</button>
+                    <button class="key" data-key="s">S (Play/Pause)</button>
+                    <button class="key" data-key="n">N (Next Track)</button>
+                    <button class="key" data-key="p">P (Prev Track)</button>
+                    
+                    <!-- Row 2 -->
+                    <button class="key" data-key="l">L (Next Playlist)</button>
+                    <button class="key" data-key="h">H (Prev Playlist)</button>
+                    <button class="key" data-key="r">R (Refresh)</button>
+                    <button class="key" data-key="/">/ (Search)</button>
+                    <button class="key" data-key="escape">Esc (Close Search)</button>
+                    
+                    <!-- Row 3 -->
+                    <button class="key" data-key="+">+ (Volume Up)</button>
+                    <button class="key" data-key="-">- (Volume Down)</button>
+                    <button class="key" data-key="S_shift">Shift + S (Shuffle)</button>
+                    <button class="key" data-key="R_shift">Shift + R (Repeat)</button>
+                    <button class="key" data-key="a">A (Authorize Spotify)</button>
+                    <button class="key" data-key="?">? (Help Menu)</button>
+                </div>
+                
+                <div class="shortcut-detail-card" id="shortcut-display">
+                    <i class="fas fa-keyboard detail-icon"></i>
+                    <h3 id="shortcut-title">Select a Key</h3>
+                    <p id="shortcut-desc">Click any key above or press it on your physical keyboard to see its description and action within RetroSpotify.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Installation Section -->
+    <section class="section" id="installation">
+        <div class="container">
+            <div class="section-header">
+                <h2>Quick Installation</h2>
+                <p>Set up RetroSpotify in minutes with a virtual Python environment.</p>
+            </div>
+            
+            <div class="installation-steps">
+                <div class="step">
+                    <div class="step-num">1</div>
+                    <div class="step-content">
+                        <h3>Clone Repository</h3>
+                        <p>Clone the project files to your local workstation.</p>
+                        <div class="code-block">
+                            <pre><code>git clone https://github.com/yourusername/Spotify-textual.git
+cd Spotify-textual</code></pre>
+                            <button class="copy-btn" onclick="copyCode(this)"><i class="far fa-copy"></i></button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="step">
+                    <div class="step-num">2</div>
+                    <div class="step-content">
+                        <h3>Install System Audio Engine</h3>
+                        <p>Ensure `ffplay` is installed so the player can pipe audio feeds.</p>
+                        <div class="code-block">
+                            <pre><code># Debian/Ubuntu
+sudo apt install ffmpeg
+
+# macOS
+brew install ffmpeg</code></pre>
+                            <button class="copy-btn" onclick="copyCode(this)"><i class="far fa-copy"></i></button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-num">3</div>
+                    <div class="step-content">
+                        <h3>Set Up Environment & Dependencies</h3>
+                        <p>Initialize your virtual environment and install the required modules.</p>
+                        <div class="code-block">
+                            <pre><code>python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt</code></pre>
+                            <button class="copy-btn" onclick="copyCode(this)"><i class="far fa-copy"></i></button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Spotify Setup Guide -->
+    <section class="section alt-bg" id="setup">
+        <div class="container">
+            <div class="section-header">
+                <h2>Spotify API Credentials</h2>
+                <p>How to configure developer credentials for full library streaming.</p>
+            </div>
+            <div class="setup-grid">
+                <div class="setup-card">
+                    <h3>1. Create a Spotify App</h3>
+                    <p>Go to the <a href="https://developer.spotify.com/dashboard" target="_blank">Spotify Developer Dashboard</a>, click <strong>Create App</strong>, and use the following values:</p>
+                    <ul>
+                        <li><strong>App Name:</strong> RetroSpotify</li>
+                        <li><strong>Redirect URI:</strong> <code>http://127.0.0.1:8888/callback</code></li>
+                    </ul>
+                </div>
+                <div class="setup-card">
+                    <h3>2. Connect inside RetroSpotify</h3>
+                    <p>Launch the player in mock mode or enter configuration directly by pressing the <kbd>a</kbd> key to suspend the app and open the interactive setup wizard.</p>
+                    <div class="code-block">
+                        <pre><code>python main.py</code></pre>
+                        <button class="copy-btn" onclick="copyCode(this)"><i class="far fa-copy"></i></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container footer-content">
+            <p>&copy; 2026 RetroSpotify. Open source under the MIT License.</p>
+            <p>Made with <i class="fas fa-heart" style="color: #1db954;"></i> for terminal lovers.</p>
+        </div>
+    </footer>
+
+    <!-- Interactive script -->
+    <script>
+        // Key definitions
+        const keyData = {
+            "space": { title: "Spacebar", desc: "Toggles play/pause of the current track." },
+            "q": { title: "Q Key", desc: "Stops playback, releases terminal locks, and quits the application." },
+            "s": { title: "S Key", desc: "Toggles play/pause status of the selected track." },
+            "n": { title: "N Key", desc: "Advances to the next track in the currently selected playlist." },
+            "p": { title: "P Key", desc: "Plays the previous track in the currently selected playlist." },
+            "l": { title: "L Key", desc: "Moves down to select the next playlist in the Library sidebar." },
+            "h": { title: "H Key", desc: "Moves up to select the previous playlist in the Library sidebar." },
+            "r": { title: "R Key", desc: "Refreshes the playlists and tracks by querying the Spotify API again." },
+            "/": { title: "/ Key", desc: "Opens the search input bar to search for tracks and artists." },
+            "escape": { title: "Escape Key", desc: "Clears the active search query, closes the search bar, and returns focus to the track list." },
+            "+": { title: "+ Key", desc: "Increases the volume by 10% and updates the volume progress indicator." },
+            "-": { title: "- Key", desc: "Decreases the volume by 10% and updates the volume progress indicator." },
+            "S_shift": { title: "Shift + S", desc: "Toggles Spotify shuffle playback mode on/off." },
+            "R_shift": { title: "Shift + R", desc: "Toggles repeat mode (Off vs Repeat-Track)." },
+            "a": { title: "A Key", desc: "Opens the interactive Spotify API authentication wizard directly in the shell." },
+            "?": { title: "? Key", desc: "Displays the help popup with list of all shortcuts and commands." }
+        };
+
+        // Interactive keyboard explorer
+        const displayTitle = document.getElementById("shortcut-title");
+        const displayDesc = document.getElementById("shortcut-desc");
+        const keys = document.querySelectorAll(".key");
+
+        keys.forEach(key => {
+            key.addEventListener("click", () => {
+                // Remove active class from all
+                keys.forEach(k => k.classList.remove("active"));
+                // Add to current
+                key.classList.add("active");
+                
+                const kd = keyData[key.getAttribute("data-key")];
+                if (kd) {
+                    displayTitle.textContent = kd.title;
+                    displayDesc.textContent = kd.desc;
+                }
+            });
+        });
+
+        // Physical keyboard event listener
+        document.addEventListener("keydown", (e) => {
+            let keyAttr = e.key.toLowerCase();
+            if (e.key === " ") keyAttr = "space";
+            if (e.key === "S" && e.shiftKey) keyAttr = "S_shift";
+            if (e.key === "R" && e.shiftKey) keyAttr = "R_shift";
+            if (e.key === "Escape") keyAttr = "escape";
+
+            const matchedKey = document.querySelector(`.key[data-key="${keyAttr}"]`);
+            if (matchedKey) {
+                matchedKey.click();
+                matchedKey.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+        });
+
+        // Navbar blur on scroll
+        const navbar = document.getElementById("navbar");
+        window.addEventListener("scroll", () => {
+            if (window.scrollY > 50) {
+                navbar.classList.add("scrolled");
+            } else {
+                navbar.classList.remove("scrolled");
+            }
+        });
+
+        // Copy to clipboard helper
+        function copyCode(btn) {
+            const pre = btn.previousElementSibling;
+            const code = pre.textContent;
+            navigator.clipboard.writeText(code).then(() => {
+                btn.innerHTML = '<i class="fas fa-check" style="color: #1db954;"></i>';
+                setTimeout(() => {
+                    btn.innerHTML = '<i class="far fa-copy"></i>';
+                }, 2000);
+            });
+        }
+
+        // Mobile Nav Toggle
+        const mobileToggle = document.getElementById("mobile-toggle");
+        const navLinks = document.querySelector(".nav-links");
+        mobileToggle.addEventListener("click", () => {
+            navLinks.classList.toggle("open");
+        });
+    </script>
+</body>
+</html>
