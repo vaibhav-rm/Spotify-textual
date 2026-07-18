@@ -209,6 +209,18 @@ class Track:
 # Mock fallback data with preview URLs
 MOCK_PLAYLISTS = [
     {
+        "name": "Liked Songs",
+        "id": "liked_songs",
+        "items": [
+            Track("Chiptune Dreams", ["Retro Synth"], 165,
+                  album_art_url="https://picsum.photos/300/300?random=10",
+                  preview_url="sine=f=330:d=30"),
+            Track("Bit-rate Groove", ["Pixelate"], 180,
+                  album_art_url="https://picsum.photos/300/300?random=11",
+                  preview_url="sine=f=440:d=30")
+        ]
+    },
+    {
         "name": "Made For You", 
         "id": None, 
         "items": [
@@ -432,16 +444,16 @@ class MusicProgressBar(Static):
                 self.playing = False
                 self.current_position = 0
                 self.progress = 0
-                self.refresh()
+                self.refresh(layout=True)
                 self.post_message(self.TrackEnded())
             else:
-                self.refresh()
+                self.refresh(layout=True)
             
     def play(self, duration: int) -> None:
         self.duration = duration
         self.start_time = time.time() - self.current_position
         self.playing = True
-        self.refresh()
+        self.refresh(layout=True)
         
     def pause(self) -> None:
         self.playing = False
@@ -450,11 +462,11 @@ class MusicProgressBar(Static):
         self.playing = False
         self.current_position = 0
         self.progress = 0
-        self.refresh()
+        self.refresh(layout=True)
         
     def render(self) -> str:
         if self.duration == 0:
-            return "\n[dim]--:-- / --:--[/dim]"
+            return "[dim]--:-- / --:--[/dim]"
             
         width = max(10, (self.size.width - 14) if self.size else 35)
         filled_width = int(self.progress * width)
@@ -468,7 +480,7 @@ class MusicProgressBar(Static):
         controls = "⏮   ▶   ⏭" if self.playing else "⏮   ⏸   ⏭"
         total_line_w = width + 12
         
-        return f"[bold white]{controls:^{total_line_w}}[/bold white]\n\n{elapsed_str} [#1db954]{bar}[/] {total_str}"
+        return f"[bold white]{controls:^{total_line_w}}[/bold white]\n{elapsed_str} [#1db954]{bar}[/] {total_str}"
 
 # Track list widget
 class TrackList(Static):
@@ -507,6 +519,8 @@ class TrackList(Static):
             return "[dim]No tracks available[/dim]"
             
         width = self.size.width if self.size else 60
+        height = self.size.height if (self.size and self.size.height > 4) else 15
+        
         num_w = 4
         dur_w = 6
         remaining = width - num_w - dur_w - 6
@@ -518,8 +532,26 @@ class TrackList(Static):
         header = f"[dim]{'#'.ljust(num_w)} {'Title'.ljust(title_w)} {'Artist'.ljust(artist_w)} {'Duration'.rjust(dur_w)}[/dim]"
         divider = f"[dim]{'─' * width}[/dim]"
         
+        # Calculate viewport slice to make it scrollable
+        visible_height = height - 2
+        if visible_height < 1:
+            visible_height = 1
+            
+        if len(self.tracks) <= visible_height:
+            start_idx = 0
+            end_idx = len(self.tracks)
+        else:
+            start_idx = max(0, self.selected_index - visible_height // 2)
+            end_idx = start_idx + visible_height
+            if end_idx > len(self.tracks):
+                end_idx = len(self.tracks)
+                start_idx = max(0, end_idx - visible_height)
+                
+        self.start_idx = start_idx
+        
         lines = [header, divider]
-        for idx, track in enumerate(self.tracks):
+        for idx in range(start_idx, end_idx):
+            track = self.tracks[idx]
             track_num = f"{idx + 1}"
             track_name = track.name
             artists = ', '.join(track.artists)
@@ -552,12 +584,21 @@ class TrackList(Static):
         if not self.tracks:
             return
             
-        index = event.y - 2
+        start_idx = getattr(self, "start_idx", 0)
+        index = start_idx + (event.y - 2)
         if 0 <= index < len(self.tracks):
             self.selected_index = index
             self.refresh()
             track = self.tracks[index]
             self.app._play_track(track)
+
+    def on_mouse_scroll_down(self, event: events.MouseScrollDown) -> None:
+        if self.select_next():
+            event.prevent_default()
+
+    def on_mouse_scroll_up(self, event: events.MouseScrollUp) -> None:
+        if self.select_previous():
+            event.prevent_default()
 
 # Playlist sidebar widget
 class PlaylistSidebar(Static):
@@ -595,8 +636,26 @@ class PlaylistSidebar(Static):
         if not self.playlists:
             return "[dim]No playlists[/dim]"
             
+        height = self.size.height if (self.size and self.size.height > 0) else 15
+        visible_height = height
+        if visible_height < 1:
+            visible_height = 1
+            
+        if len(self.playlists) <= visible_height:
+            start_idx = 0
+            end_idx = len(self.playlists)
+        else:
+            start_idx = max(0, self.selected_index - visible_height // 2)
+            end_idx = start_idx + visible_height
+            if end_idx > len(self.playlists):
+                end_idx = len(self.playlists)
+                start_idx = max(0, end_idx - visible_height)
+                
+        self.start_idx = start_idx
+        
         lines = []
-        for idx, playlist in enumerate(self.playlists):
+        for idx in range(start_idx, end_idx):
+            playlist = self.playlists[idx]
             name = playlist['name']
             track_count = len(playlist.get('items', []))
             
@@ -623,12 +682,25 @@ class PlaylistSidebar(Static):
         if not self.playlists:
             return
             
-        index = event.y
+        start_idx = getattr(self, "start_idx", 0)
+        index = start_idx + event.y
         if 0 <= index < len(self.playlists):
             self.selected_index = index
             self.refresh()
             self.app._update_track_list()
             self.app._stop_track()
+
+    def on_mouse_scroll_down(self, event: events.MouseScrollDown) -> None:
+        if self.select_next():
+            self.app._update_track_list()
+            self.app._stop_track()
+            event.prevent_default()
+
+    def on_mouse_scroll_up(self, event: events.MouseScrollUp) -> None:
+        if self.select_previous():
+            self.app._update_track_list()
+            self.app._stop_track()
+            event.prevent_default()
 
 # Now Playing Widget
 class NowPlaying(Static):
@@ -978,7 +1050,7 @@ class LoginScreen(Screen):
                         f.write(f"SPOTIPY_CLIENT_SECRET={client_secret}\n")
                     f.write(f"SPOTIPY_REDIRECT_URI={redirect_uri}\n")
                 
-            scope = "user-read-playback-state user-modify-playback-state user-read-currently-playing playlist-read-private"
+            scope = "user-read-playback-state user-modify-playback-state user-read-currently-playing playlist-read-private user-library-read"
             try:
                 if self.mode == "pkce":
                     self.auth_manager = SpotifyPKCE(client_id=client_id, redirect_uri=redirect_uri, scope=scope, cache_path=".spotify_cache")
@@ -1280,6 +1352,18 @@ class RetroSpotifyApp(App):
     #track-list-container:focus-within {
         border: round #1db954;
     }
+    #track_list {
+        height: 100%;
+        width: 100%;
+    }
+    #sidebar {
+        height: 100%;
+        width: 100%;
+    }
+    #music_progress {
+        height: 2;
+        width: 100%;
+    }
     
     #album-art-container {
         width: 35%;
@@ -1296,7 +1380,7 @@ class RetroSpotifyApp(App):
         width: 30%;
         border: round #282828;
         background: #181818;
-        padding: 1;
+        padding: 0 1;
     }
     #now-playing-container:focus-within {
         border: round #1db954;
@@ -1306,7 +1390,7 @@ class RetroSpotifyApp(App):
         width: 45%;
         border: round #282828;
         background: #181818;
-        padding: 1;
+        padding: 0 1;
     }
     #progress-container:focus-within {
         border: round #1db954;
@@ -1316,7 +1400,7 @@ class RetroSpotifyApp(App):
         width: 25%;
         border: round #282828;
         background: #181818;
-        padding: 1;
+        padding: 0 1;
     }
     #volume-container:focus-within {
         border: round #1db954;
@@ -1569,7 +1653,7 @@ class RetroSpotifyApp(App):
             client_id = os.getenv("SPOTIPY_CLIENT_ID")
             client_secret = os.getenv("SPOTIPY_CLIENT_SECRET")
             redirect_uri = os.getenv("SPOTIPY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
-            scope = "user-read-playback-state user-modify-playback-state user-read-currently-playing playlist-read-private"
+            scope = "user-read-playback-state user-modify-playback-state user-read-currently-playing playlist-read-private user-library-read"
             
             if client_id:
                 try:
@@ -1628,52 +1712,66 @@ class RetroSpotifyApp(App):
             
             # Liked Songs
             try:
-                saved_tracks_results = self.sp.current_user_saved_tracks(limit=50)
+                saved_tracks_results = await asyncio.to_thread(self.sp.current_user_saved_tracks, limit=50)
                 liked_tracks = []
-                for item in saved_tracks_results['items']:
-                    track_data = item['track']
-                    if track_data:
-                        album_images = track_data['album']['images']
-                        album_art_url = album_images[0]['url'] if album_images else None
-                        
-                        liked_tracks.append(Track(
-                            name=track_data['name'],
-                            artists=[artist['name'] for artist in track_data['artists']],
-                            duration=track_data['duration_ms'] // 1000,
-                            id=track_data['id'],
-                            album_art_url=album_art_url,
-                            preview_url=track_data.get('preview_url')
-                        ))
+                pages = 0
+                while saved_tracks_results and pages < 3:
+                    for item in saved_tracks_results['items']:
+                        track_data = item['track']
+                        if track_data:
+                            album_images = track_data['album']['images']
+                            album_art_url = album_images[0]['url'] if album_images else None
+                            
+                            liked_tracks.append(Track(
+                                name=track_data['name'],
+                                artists=[artist['name'] for artist in track_data['artists']],
+                                duration=track_data['duration_ms'] // 1000,
+                                id=track_data['id'],
+                                album_art_url=album_art_url,
+                                preview_url=track_data.get('preview_url')
+                            ))
+                    if saved_tracks_results.get('next') and pages < 2:
+                        saved_tracks_results = await asyncio.to_thread(self.sp.next, saved_tracks_results)
+                        pages += 1
+                    else:
+                        break
                 
-                if liked_tracks:
-                    playlists.append({
-                        'name': 'Liked Songs',
-                        'id': 'liked_songs',
-                        'items': liked_tracks
-                    })
+                # Append Liked Songs even if it has 0 items so it is always visible
+                playlists.append({
+                    'name': 'Liked Songs',
+                    'id': 'liked_songs',
+                    'items': liked_tracks
+                })
             except Exception as e:
                 self.notify(f"Failed to load Liked Songs: {e}")
 
             # User Playlists
-            results = self.sp.current_user_playlists(limit=20)
+            results = await asyncio.to_thread(self.sp.current_user_playlists, limit=50)
             for item in results['items']:
                 tracks = []
-                track_results = self.sp.playlist_tracks(item['id'], limit=50)
-                for track_item in track_results['items']:
-                    track_data = track_item['track']
-                    if track_data:
-                        album_images = track_data['album']['images']
-                        album_art_url = album_images[0]['url'] if album_images else None
-                        preview_url = track_data.get('preview_url')
-                        
-                        tracks.append(Track(
-                            name=track_data['name'],
-                            artists=[artist['name'] for artist in track_data['artists']],
-                            duration=track_data['duration_ms'] // 1000,
-                            id=track_data['id'],
-                            album_art_url=album_art_url,
-                            preview_url=preview_url
-                        ))
+                track_results = await asyncio.to_thread(self.sp.playlist_tracks, item['id'], limit=50)
+                pages = 0
+                while track_results and pages < 3:
+                    for track_item in track_results['items']:
+                        track_data = track_item['track']
+                        if track_data:
+                            album_images = track_data['album']['images']
+                            album_art_url = album_images[0]['url'] if album_images else None
+                            preview_url = track_data.get('preview_url')
+                            
+                            tracks.append(Track(
+                                name=track_data['name'],
+                                artists=[artist['name'] for artist in track_data['artists']],
+                                duration=track_data['duration_ms'] // 1000,
+                                id=track_data['id'],
+                                album_art_url=album_art_url,
+                                preview_url=preview_url
+                            ))
+                    if track_results.get('next') and pages < 2:
+                        track_results = await asyncio.to_thread(self.sp.next, track_results)
+                        pages += 1
+                    else:
+                        break
                 
                 playlists.append({
                     'name': item['name'],
