@@ -29,6 +29,7 @@
                 <a href="#shortcuts">Shortcuts</a>
                 <a href="#installation">Installation</a>
                 <a href="#setup">Setup</a>
+                <a href="#changelog">Changelog</a>
                 <a href="https://github.com/vaibhav-rm/Spotify-textual" target="_blank" class="nav-btn"><i class="fab fa-github"></i> GitHub</a>
             </div>
             <button class="mobile-toggle" id="mobile-toggle">
@@ -150,6 +151,12 @@
             <div class="section-header">
                 <h2>Quick Installation</h2>
                 <p>Set up RetroSpotify in minutes with a virtual Python environment.</p>
+                <div class="installation-alternative" style="margin-top: 1.5rem; background: rgba(29, 185, 84, 0.05); border: 1px dashed rgba(29, 185, 84, 0.3); padding: 1.25rem 2rem; border-radius: 12px; display: inline-flex; align-items: center; gap: 1rem; text-align: left; max-width: 800px; margin-left: auto; margin-right: auto;">
+                    <i class="fas fa-info-circle" style="color: var(--spotify-green); font-size: 1.5rem; flex-shrink: 0;"></i>
+                    <p style="margin: 0; font-size: 0.95rem; color: var(--text-gray);">
+                        <strong>Alternative:</strong> Don't want to manage Python virtual environments? Download pre-built standalone binaries or learn to build them yourself in the <a href="compilation.html" style="color: var(--spotify-green); font-weight: 600; text-decoration: underline;">Compilation & Releases Guide</a>.
+                    </p>
+                </div>
             </div>
             
             <div class="installation-steps">
@@ -221,6 +228,72 @@ pip install -r requirements.txt</code></pre>
                     <div class="code-block">
                         <pre><code>python main.py</code></pre>
                         <button class="copy-btn" onclick="copyCode(this)"><i class="far fa-copy"></i></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Changelog Section -->
+    <section class="section" id="changelog">
+        <div class="container">
+            <div class="section-header">
+                <h2>Release Changelog</h2>
+                <p>Track the latest updates, bug fixes, and feature releases of RetroSpotify.</p>
+            </div>
+            
+            <div class="changelog-timeline">
+                <!-- Version 1.1.0 -->
+                <div class="changelog-item">
+                    <div class="changelog-badge"></div>
+                    <div class="changelog-content">
+                        <div class="changelog-header">
+                            <h3 class="changelog-title">v1.1.0 - Playback & settings stability</h3>
+                            <span class="changelog-date">August 10, 2026</span>
+                        </div>
+                        <div class="changelog-tags">
+                            <span class="changelog-tag tag-added">Added</span>
+                            <span class="changelog-tag tag-fixed">Fixed</span>
+                            <span class="changelog-tag tag-improved">Improved</span>
+                        </div>
+                        <ul class="changelog-list">
+                            <li><strong>Repeat Modes:</strong> Implemented a 3-state playback loop (Off ➔ Track Loop ➔ Playlist Loop).</li>
+                            <li><strong>OAuth Scope Expansion:</strong> Expanded developer scopes to include <code>user-read-private</code> and <code>user-read-email</code> for accurate subscription tier and settings synchronization.</li>
+                            <li><strong>Centralized Transitions:</strong> Refactored track ending event propagation to eliminate double-firing transition bugs.</li>
+                            <li><strong>Playback Exhaustion:</strong> Added checks to stop the music progress player cleanly when a playlist reaches its end.</li>
+                            <li><strong>Responsive Resizing:</strong> Integrated responsive Top-Row collapses to let the UI dynamically adjust when the sidebar is toggled.</li>
+                            <li><strong>Headless Verification Suite:</strong> Expanded automated testing to verify natural track-end repeat and transition patterns.</li>
+                        </ul>
+                        <div class="changelog-footer">
+                            <a href="https://github.com/vaibhav-rm/Spotify-textual/releases/tag/v1.1.0" target="_blank" class="release-link">
+                                View Release on GitHub <i class="fas fa-external-link-alt"></i>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Version 1.0.0 -->
+                <div class="changelog-item">
+                    <div class="changelog-badge"></div>
+                    <div class="changelog-content">
+                        <div class="changelog-header">
+                            <h3 class="changelog-title">v1.0.0 - Initial public release</h3>
+                            <span class="changelog-date">July 18, 2026</span>
+                        </div>
+                        <div class="changelog-tags">
+                            <span class="changelog-tag tag-added">Added</span>
+                        </div>
+                        <ul class="changelog-list">
+                            <li><strong>Premium Terminal Client:</strong> Gorgeous command-line UI with a classic dark theme, keyboard-focused layout, and glassmorphic aesthetics.</li>
+                            <li><strong>Local Audio Fallback:</strong> Added a local sine/square wave synthesizer to pipe audio feedback when Spotify is unavailable.</li>
+                            <li><strong>Dynamic ASCII Album Art:</strong> Render high-fidelity colored ASCII album art directly in your terminal emulator.</li>
+                            <li><strong>Interactive Connect:</strong> Switch and transfer active Spotify playback streams between smart speakers, phones, and laptops.</li>
+                        </ul>
+                        <div class="changelog-footer">
+                            <a href="https://github.com/vaibhav-rm/Spotify-textual/releases/tag/v1.0.0" target="_blank" class="release-link">
+                                View Release on GitHub <i class="fas fa-external-link-alt"></i>
+                            </a>
+                        </div>
                     </div>
                 </div>
             </div>

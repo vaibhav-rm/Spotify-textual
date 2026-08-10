@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RetroSpotify - Compilation & Releases Guide</title>
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="Official guide to download pre-compiled standalone RetroSpotify binaries or compile them from source on Linux and Windows.">
+    <meta name="keywords" content="Spotify, Terminal, Compile, Standalone, PyInstaller, Windows, Linux">
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom Stylesheet -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar scrolled" id="navbar">
+        <div class="nav-container">
+            <a href="index.html" class="nav-logo">
+                <img src="logo.png" alt="RetroSpotify Logo">
+                <span>RetroSpotify</span>
+            </a>
+            <div class="nav-links">
+                <a href="index.html#features">Features</a>
+                <a href="index.html#shortcuts">Shortcuts</a>
+                <a href="index.html#installation">Installation</a>
+                <a href="index.html#setup">Setup</a>
+                <a href="index.html#changelog">Changelog</a>
+                <a href="https://github.com/vaibhav-rm/Spotify-textual" target="_blank" class="nav-btn"><i class="fab fa-github"></i> GitHub</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Header / Hero section -->
+    <header class="hero" style="min-height: auto; padding: 12rem 2rem 4rem 2rem;">
+        <div class="hero-glow" style="top: 0; right: 0;"></div>
+        <div class="container" style="max-width: 900px;">
+            <a href="index.html" class="btn btn-secondary" style="margin-bottom: 2rem; padding: 0.6rem 1.2rem; font-size: 0.9rem;">
+                <i class="fas fa-arrow-left"></i> Back to Home
+            </a>
+            <div class="badge"><i class="fas fa-cog"></i> Deployment Guide</div>
+            <h1 style="font-size: 3.5rem; margin-bottom: 1rem;">Compilation & Releases</h1>
+            <p class="subtitle" style="font-size: 1.4rem; margin-bottom: 0;">Learn how to run RetroSpotify using pre-compiled executables or compile it yourself.</p>
+        </div>
+    </header>
+
+    <!-- Method A: Pre-compiled Binaries -->
+    <section class="section" id="prebuilt" style="padding: 4rem 2rem;">
+        <div class="container" style="max-width: 900px;">
+            <div class="section-header" style="text-align: left; margin: 0 0 3rem 0; max-width: 100%;">
+                <h2 style="font-size: 2.2rem; display: flex; align-items: center; gap: 1rem;">
+                    <span style="color: var(--spotify-green);"><i class="fas fa-box-open"></i></span> Method A: Installation from Releases
+                </h2>
+                <p>The quickest way to run RetroSpotify without installing Python, setting up virtual environments, or managing libraries.</p>
+            </div>
+
+            <div class="features-grid" style="grid-template-columns: 1fr; gap: 2rem;">
+                <div class="feature-card" style="background: var(--bg-card); cursor: default;">
+                    <h3>1. Download the Executable</h3>
+                    <p style="margin-bottom: 1.5rem;">Head over to the GitHub Releases page and download the executable file matching your platform:</p>
+                    
+                    <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 2rem;">
+                        <a href="https://github.com/vaibhav-rm/Spotify-textual/releases/tag/v1.1.0" target="_blank" class="btn btn-primary" style="padding: 0.75rem 1.5rem;">
+                            <i class="fab fa-github"></i> Get Latest Release (v1.1.0)
+                        </a>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 1rem;">
+                        <div>
+                            <h4 style="color: var(--text-white); margin-bottom: 0.5rem;"><i class="fab fa-linux"></i> Linux Binary</h4>
+                            <p style="font-size: 0.9rem; margin-bottom: 1rem;">Standalone executable for standard 64-bit Linux distributions.</p>
+                            <div class="code-block" style="margin: 0;">
+                                <pre><code># Make it executable and run
+chmod +x retrospotify
+./retrospotify</code></pre>
+                                <button class="copy-btn" onclick="copyCode(this)"><i class="far fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div>
+                            <h4 style="color: var(--text-white); margin-bottom: 0.5rem;"><i class="fab fa-windows"></i> Windows Binary</h4>
+                            <p style="font-size: 0.9rem; margin-bottom: 1rem;">Portable <code>retrospotify.exe</code> console executable.</p>
+                            <div class="code-block" style="margin: 0;">
+                                <pre><code># Run in PowerShell or Command Prompt
+.\retrospotify.exe</code></pre>
+                                <button class="copy-btn" onclick="copyCode(this)"><i class="far fa-copy"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="feature-card" style="border-color: rgba(255, 167, 38, 0.2); background: rgba(255, 167, 38, 0.02); cursor: default;">
+                    <h3 style="color: #ffa726;"><i class="fas fa-exclamation-triangle"></i> Essential Requirement: FFmpeg</h3>
+                    <p style="margin-top: 0.5rem;">Even when using pre-compiled executables, RetroSpotify requires <strong>FFmpeg (specifically `ffplay`)</strong> installed and present in your system's environment PATH to stream and output audio feeds.</p>
+                    <ul style="margin: 1rem 0 0 1.25rem; font-size: 0.95rem; display: flex; flex-direction: column; gap: 0.5rem;">
+                        <li><strong>Windows:</strong> Download FFmpeg, extract it, and add the <code>bin</code> directory to your System PATH environment variables.</li>
+                        <li><strong>Linux:</strong> Install it via your package manager (e.g., <code>sudo apt install ffmpeg</code> or <code>sudo dnf install ffmpeg</code>).</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Method B: Compiling from source -->
+    <section class="section alt-bg" id="compiling" style="padding: 4rem 2rem;">
+        <div class="container" style="max-width: 900px;">
+            <div class="section-header" style="text-align: left; margin: 0 0 3rem 0; max-width: 100%;">
+                <h2 style="font-size: 2.2rem; display: flex; align-items: center; gap: 1rem;">
+                    <span style="color: var(--spotify-green);"><i class="fas fa-terminal"></i></span> Method B: Compiling from Source
+                </h2>
+                <p>Build your own standalone binary using Python and PyInstaller. This packages all scripts and assets into a single file.</p>
+            </div>
+
+            <div class="installation-steps" style="max-width: 100%;">
+                <div class="step">
+                    <div class="step-num">1</div>
+                    <div class="step-content">
+                        <h3>Clone Repository</h3>
+                        <p>Download the codebase to your local system first:</p>
+                        <div class="code-block">
+                            <pre><code>git clone https://github.com/vaibhav-rm/Spotify-textual.git
+cd Spotify-textual</code></pre>
+                            <button class="copy-btn" onclick="copyCode(this)"><i class="far fa-copy"></i></button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-num">2</div>
+                    <div class="step-content">
+                        <h3>Install Python & FFmpeg</h3>
+                        <p>Make sure Python 3 (with venv/pip) and FFmpeg are installed and present in your system PATH:</p>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 1rem;">
+                            <div>
+                                <h4 style="color: var(--text-white); margin-bottom: 0.5rem;"><i class="fab fa-linux"></i> Linux (Debian/Ubuntu)</h4>
+                                <div class="code-block" style="margin: 0;">
+                                    <pre><code>sudo apt update
+sudo apt install python3 python3-venv python3-pip ffmpeg -y</code></pre>
+                                    <button class="copy-btn" onclick="copyCode(this)"><i class="far fa-copy"></i></button>
+                                </div>
+                            </div>
+                            <div>
+                                <h4 style="color: var(--text-white); margin-bottom: 0.5rem;"><i class="fab fa-windows"></i> Windows</h4>
+                                <p style="font-size: 0.85rem; color: var(--text-gray); margin-bottom: 0.5rem;">
+                                    1. Download and run <a href="https://www.python.org/downloads/" target="_blank" style="color: var(--spotify-green); text-decoration: underline;">Python 3 Installer</a> (tick <strong>"Add Python to PATH"</strong>).<br>
+                                    2. Install <a href="https://ffmpeg.org/download.html" target="_blank" style="color: var(--spotify-green); text-decoration: underline;">FFmpeg</a> and add the <code>ffmpeg/bin</code> folder to your Environment Variables.
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-num">3</div>
+                    <div class="step-content">
+                        <h3>Set Up Virtual Environment</h3>
+                        <p>Initialize and activate a virtual environment to isolate the build environment:</p>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 1rem;">
+                            <div>
+                                <h4 style="color: var(--text-white); margin-bottom: 0.5rem;"><i class="fab fa-linux"></i> Linux</h4>
+                                <div class="code-block" style="margin: 0;">
+                                    <pre><code>python3 -m venv venv
+source venv/bin/activate</code></pre>
+                                    <button class="copy-btn" onclick="copyCode(this)"><i class="far fa-copy"></i></button>
+                                </div>
+                            </div>
+                            <div>
+                                <h4 style="color: var(--text-white); margin-bottom: 0.5rem;"><i class="fab fa-windows"></i> Windows (PowerShell)</h4>
+                                <div class="code-block" style="margin: 0;">
+                                    <pre><code>python -m venv venv
+.\venv\Scripts\Activate.ps1</code></pre>
+                                    <button class="copy-btn" onclick="copyCode(this)"><i class="far fa-copy"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-num">4</div>
+                    <div class="step-content">
+                        <h3>Install Requirements & PyInstaller</h3>
+                        <p>Install the required packages along with PyInstaller to pack the application:</p>
+                        <div class="code-block">
+                            <pre><code>pip install -r requirements.txt
+pip install pyinstaller</code></pre>
+                            <button class="copy-btn" onclick="copyCode(this)"><i class="far fa-copy"></i></button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-num">5</div>
+                    <div class="step-content">
+                        <h3>Compile the Software</h3>
+                        <p>Run the <code>compile.py</code> script. This will construct dynamic resource configurations and produce the standalone executable:</p>
+                        <div class="code-block">
+                            <pre><code>python compile.py</code></pre>
+                            <button class="copy-btn" onclick="copyCode(this)"><i class="far fa-copy"></i></button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-num">6</div>
+                    <div class="step-content">
+                        <h3>Locate and Run</h3>
+                        <p>The compiled executable will be stored in the <strong><code>dist/</code></strong> directory:</p>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 1rem;">
+                            <div>
+                                <h4 style="color: var(--text-white); margin-bottom: 0.5rem;"><i class="fab fa-linux"></i> Linux</h4>
+                                <div class="code-block" style="margin: 0;">
+                                    <pre><code>./dist/retrospotify</code></pre>
+                                    <button class="copy-btn" onclick="copyCode(this)"><i class="far fa-copy"></i></button>
+                                </div>
+                            </div>
+                            <div>
+                                <h4 style="color: var(--text-white); margin-bottom: 0.5rem;"><i class="fab fa-windows"></i> Windows</h4>
+                                <div class="code-block" style="margin: 0;">
+                                    <pre><code>.\dist\retrospotify.exe</code></pre>
+                                    <button class="copy-btn" onclick="copyCode(this)"><i class="far fa-copy"></i></button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container footer-content">
+            <p>&copy; 2026 RetroSpotify. Open source under the MIT License.</p>
+            <p>Made with <i class="fas fa-heart" style="color: #1db954;"></i> for terminal lovers.</p>
+        </div>
+    </footer>
+
+    <!-- Interactive script -->
+    <script>
+        // Copy to clipboard helper
+        function copyCode(btn) {
+            const pre = btn.previousElementSibling;
+            const code = pre.textContent;
+            navigator.clipboard.writeText(code).then(() => {
+                btn.innerHTML = '<i class="fas fa-check" style="color: #1db954;"></i>';
+                setTimeout(() => {
+                    btn.innerHTML = '<i class="far fa-copy"></i>';
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>
