@@ -1,11 +1,70 @@
 import asyncio
 import time
+import os
+from textual.widgets import Input
 from main import RetroSpotifyApp
 
+def backup_env():
+    env_exists = os.path.exists(".env")
+    env_content = ""
+    if env_exists:
+        with open(".env", "r") as f:
+            env_content = f.read()
+            
+    conf_exists = os.path.exists("spotifyd.conf")
+    conf_content = ""
+    if conf_exists:
+        with open("spotifyd.conf", "r") as f:
+            conf_content = f.read()
+            
+    orig_env = {
+        "SPOTIPY_CLIENT_ID": os.environ.get("SPOTIPY_CLIENT_ID"),
+        "SPOTIPY_CLIENT_SECRET": os.environ.get("SPOTIPY_CLIENT_SECRET"),
+        "SPOTIPY_REDIRECT_URI": os.environ.get("SPOTIPY_REDIRECT_URI"),
+        "SPOTIPY_USERNAME": os.environ.get("SPOTIPY_USERNAME"),
+        "SPOTIPY_PASSWORD": os.environ.get("SPOTIPY_PASSWORD"),
+        "SPOTIPY_DEVICE_NAME": os.environ.get("SPOTIPY_DEVICE_NAME"),
+        "SPOTIPY_AUDIO_BACKEND": os.environ.get("SPOTIPY_AUDIO_BACKEND"),
+        "SPOTIPY_BITRATE": os.environ.get("SPOTIPY_BITRATE"),
+    }
+    return env_exists, env_content, conf_exists, conf_content, orig_env
+
+def restore_env(env_exists, env_content, conf_exists, conf_content, orig_env):
+    for key, val in orig_env.items():
+        if val is not None:
+            os.environ[key] = val
+        else:
+            os.environ.pop(key, None)
+            
+    if env_exists:
+        with open(".env", "w") as f:
+            f.write(env_content)
+    else:
+        if os.path.exists(".env"):
+            try:
+                os.remove(".env")
+            except Exception:
+                pass
+            
+    if conf_exists:
+        with open("spotifyd.conf", "w") as f:
+            f.write(conf_content)
+    else:
+        if os.path.exists("spotifyd.conf"):
+            try:
+                os.remove("spotifyd.conf")
+            except Exception:
+                pass
+
 async def test_app():
-    # Start the app in mock mode
-    app = RetroSpotifyApp(force_mock=True)
-    
+    env_exists, env_content, conf_exists, conf_content, orig_env = backup_env()
+    try:
+        app = RetroSpotifyApp(force_mock=True)
+        await run_test_logic(app)
+    finally:
+        restore_env(env_exists, env_content, conf_exists, conf_content, orig_env)
+
+async def run_test_logic(app):
     print("Starting headless app test...")
     async with app.run_test(size=(120, 40)) as pilot:
         print("✅ App mounted successfully!")
@@ -16,21 +75,43 @@ async def test_app():
         print("✅ Correctly started on the Welcome Screen.")
         
         # Test Login Screen flow
-        await pilot.click("#btn-pkce")
+        await pilot.click("#btn-login")
         await pilot.pause()
         assert app.screen.id == "login"
-        print("✅ Successfully opened PKCE Login screen.")
+        print("✅ Successfully opened Login screen.")
         
         # Go to Next step
-        app.screen.query_one("#input-client-id").value = "test_client_id"
+        app.screen.query_one("#input-username").value = "test_email@example.com"
         await pilot.click("#btn-next")
         await pilot.pause()
         assert app.screen.query_one("#step-credentials").has_class("hidden") is True
         assert app.screen.query_one("#step-authorize").has_class("hidden") is False
         print("✅ Transitioned to Step 2 (Authorize) successfully.")
         
+        # Test background redirect server capturing URL
+        import urllib.parse
+        import requests
+        
+        redirect_uri = os.getenv("SPOTIPY_REDIRECT_URI") or "http://127.0.0.1:8888/callback"
+        parsed = urllib.parse.urlparse(redirect_uri)
+        port = parsed.port or 8888
+        
+        def send_callback():
+            try:
+                requests.get(f"http://127.0.0.1:{port}/callback?code=mock_auth_code_for_test")
+            except Exception as e:
+                print(f"Callback request error: {e}")
+                
+        await asyncio.to_thread(send_callback)
+        await pilot.pause()
+        # Check that the input value was automatically populated
+        captured_val = app.screen.query_one("#input-redirected-url").value
+        assert "mock_auth_code_for_test" in captured_val
+        print("✅ Background HTTP redirect listener captured the URL automatically!")
+        
         # Click Back
-        await pilot.click("#btn-back")
+        app.screen.query_one("#btn-back").focus()
+        await pilot.press("enter")
         await pilot.pause()
         assert app.screen.query_one("#step-credentials").has_class("hidden") is False
         assert app.screen.query_one("#step-authorize").has_class("hidden") is True
@@ -41,6 +122,18 @@ async def test_app():
         await pilot.pause()
         assert app.screen.id == "welcome"
         print("✅ Cancelled login and returned to Welcome screen.")
+        
+        # Test About Screen modal
+        app.screen.query_one("#btn-about").focus()
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app.screen.__class__.__name__ == "AboutScreen"
+        print("✅ About Screen modal opened successfully.")
+        # Press escape to close
+        await pilot.press("escape")
+        await pilot.pause()
+        assert app.screen.id == "welcome"
+        print("✅ About Screen modal closed successfully.")
         
         # Click the "Explore Offline" button to switch to MainPlayerScreen
         await pilot.click("#btn-mock")
@@ -142,16 +235,30 @@ async def test_app():
         assert app.screen.id == "player"
         print("✅ Devices Screen closed successfully.")
 
-        # Test Settings modal (T)
+        # Test Settings modal (T) and saving settings
         await pilot.press("T")
         await pilot.pause()
         assert app.screen.__class__.__name__ == "SettingsScreen"
         print("✅ Settings Screen modal opened successfully.")
-        # Press escape to close Settings screen
-        await pilot.press("escape")
+        
+        # Modify input values
+        app.screen.query_one("#settings-client-id", Input).value = "test-client-id"
+        app.screen.query_one("#settings-username", Input).value = "test-username"
+        app.screen.query_one("#settings-password", Input).value = "test-password"
+        app.screen.query_one("#settings-device-name", Input).value = "TestDevice"
+        
+        # Click Save & Apply Settings by focusing and pressing enter
+        app.screen.query_one("#btn-settings-save").focus()
+        await pilot.press("enter")
         await pilot.pause()
         assert app.screen.id == "player"
-        print("✅ Settings Screen closed successfully.")
+        print("✅ Settings saved and screen closed successfully.")
+        
+        # Assert updated environment variables
+        assert os.environ.get("SPOTIPY_CLIENT_ID") == "test-client-id"
+        assert os.environ.get("SPOTIPY_USERNAME") == "test-username"
+        assert os.environ.get("SPOTIPY_PASSWORD") == "test-password"
+        assert os.environ.get("SPOTIPY_DEVICE_NAME") == "TestDevice"
 
         # Verify Device Indicator exists in status bar
         device_ind = app.screen.query_one("#device_indicator")

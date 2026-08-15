@@ -44,12 +44,18 @@ except ImportError:
 load_dotenv()
 
 ASCII_LOGO = r"""
-  _____             _   _ _   _  _   _     _
- / ____|           | | (_) | | || \ | |   | |
-| (___   ___  _ __ | |_ _| |_| ||  \| | __| | ___ _ __
- \___ \ / _ \| '_ \| __| | __| || . ` |/ _` |/ _ \ '__|
- ____) | (_) | | | | |_| | |_| || |\  | (_| |  __/ |
-|_____/ \___/|_| |_|\__|_|\__|_||_| \_|\__,_|\___|_|
+██████╗ ███████╗████████╗██████╗  ██████╗ 
+██╔══██╗██╔════╝╚══██╔══╝██╔══██╗██╔═══██╗
+██████╔╝█████╗     ██║   ██████╔╝██║   ██║
+██╔══██╗██╔══╝     ██║   ██╔══██╗██║   ██║
+██║  ██║███████╗   ██║   ██║  ██║╚██████╔╝
+╚═╝  ╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═╝ ╚═════╝ 
+███████╗██████╗  ██████╗ ████████╗██╗███████╗██╗   ██╗
+██╔════╝██╔══██╗██╔═══██╗╚══██╔══╝██║██╔════╝╚██╗ ██╔╝
+███████╗██████╔╝██║   ██║   ██║   ██║█████╗   ╚████╔╝ 
+╚════██║██╔═══╝ ██║   ██║   ██║   ██║██╔══╝    ╚██╔╝  
+███████║██║     ╚██████╔╝   ██║   ██║██║        ██║   
+╚══════╝╚═╝      ╚═════╝    ╚═╝   ╚═╝╚═╝        ╚═╝   
 """
 
 # High-Detail Full-Color ANSI block Art Generator for album art
@@ -1028,53 +1034,265 @@ class HelpScreen(ModalScreen):
     def on_key(self, event: events.Key) -> None:
         if event.key in ("escape", "q", "question_mark", "enter", "space"):
             self.app.pop_screen()
-class SettingsScreen(ModalScreen):
+class SettingsScreen(Screen):
+    def __init__(self, *args, **kwargs):
+        kwargs["id"] = "settings"
+        super().__init__(*args, **kwargs)
+        
     def compose(self) -> ComposeResult:
-        with Container(id="settings-modal-container"):
-            yield Label("⚙️ RetroSpotify Settings & Profile ⚙️", id="settings-modal-title")
-            
-            # Retrieve profile info
-            username = "retro_coder"
-            email = "coder@retro.spotify"
-            plan = "Spotify Premium (Mock)"
-            region = "US"
-            audio_source = "Local Player (ffplay/vlc)"
-            
-            if self.app.sp:
-                try:
-                    user_info = self.app.sp.current_user()
-                    username = user_info.get("display_name") or user_info.get("id") or username
-                    email = user_info.get("email", "N/A")
-                    plan = f"Spotify {user_info.get('product', 'free').capitalize()}"
-                    region = user_info.get("country", "N/A")
-                    audio_source = "Spotify Connect Client"
-                except Exception:
-                    pass
-            
-            profile_info = (
-                f"[bold green]👤 USER PROFILE[/bold green]\n"
-                f"  • [white]Username:[/] {username}\n"
-                f"  • [white]Email:[/]    {email}\n"
-                f"  • [white]Plan:[/]     {plan}\n"
-                f"  • [white]Country:[/]  {region}\n\n"
-                f"[bold green]🔧 APP CONFIGURATION[/bold green]\n"
-                f"  • [white]Audio Source:[/]   {audio_source}\n"
-                f"  • [white]Audio Quality:[/]  High (320kbps)\n"
-                f"  • [white]Cache Size:[/]     48.2 MB / 500 MB\n"
-                f"  • [white]App Version:[/]    v1.2.0-retro\n\n"
-                f"[bold green]🎨 RETRO DESIGN SYSTEM[/bold green]\n"
-                f"  • [white]Theme:[/]          Spotify Dark Synth\n"
-                f"  • [white]Status:[/]         Headless TUI Enabled\n"
-            )
-            
-            yield Static(profile_info, id="settings-modal-content")
-            yield Button("Close", id="btn-close-settings", variant="success")
+        yield Header()
+        
+        # Get Spotify current user info if authenticated
+        username = "Not Connected"
+        email = "Not Connected"
+        plan = "None"
+        country = "N/A"
+        if self.app.sp:
+            try:
+                user_info = self.app.sp.current_user()
+                username = user_info.get("display_name") or user_info.get("id") or username
+                email = user_info.get("email") or email
+                plan = user_info.get("product", "free")
+                country = user_info.get("country") or country
+            except Exception:
+                pass
+                
+        profile_header = f"👤 Account: [white]{username}[/] ({email}) • Plan: [white]{plan.upper()}[/] • Country: [white]{country}[/]"
+        
+        with ScrollableContainer(id="settings-scroll-container"):
+            with Container(id="settings-container"):
+                yield Static("⚙️ RetroSpotify Settings ⚙️", id="settings-title")
+                yield Static(profile_header, id="settings-profile-header")
+                
+                with Horizontal(id="settings-form"):
+                    # Left Column: API Settings
+                    with Vertical(classes="settings-col"):
+                        yield Static("🔌 Spotify API Credentials", classes="settings-section-title")
+                        
+                        yield Label("Spotify Client ID:")
+                        yield Input(
+                            placeholder="Enter Client ID...",
+                            id="settings-client-id",
+                            value=os.getenv("SPOTIPY_CLIENT_ID") or "906b96c8bfe0473792881c6b128c560b"
+                        )
+                        
+                        yield Label("Spotify Client Secret:")
+                        yield Input(
+                            placeholder="Enter Client Secret (Optional for PKCE)...",
+                            id="settings-client-secret",
+                            password=True,
+                            value=os.getenv("SPOTIPY_CLIENT_SECRET", "")
+                        )
+                        
+                        yield Label("Redirect URI:")
+                        yield Input(
+                            placeholder="http://127.0.0.1:8888/callback",
+                            id="settings-redirect-uri",
+                            value=os.getenv("SPOTIPY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
+                        )
+                        
+                        # App cache settings
+                        yield Label("App Cache Size:")
+                        cache_size_str = "0 MB"
+                        if os.path.exists(".spotify_cache"):
+                            try:
+                                size = os.path.getsize(".spotify_cache")
+                                cache_size_str = f"{size / 1024 / 1024:.2f} MB"
+                            except Exception:
+                                pass
+                        yield Static(f"Web API Cache: {cache_size_str}", id="settings-cache-info")
+                        yield Button("Clear Web API Cache", id="btn-settings-clear-app-cache", variant="warning")
+                        
+                    # Right Column: Daemon & Auth
+                    with Vertical(classes="settings-col"):
+                        yield Static("🔊 Local Player Daemon (spotifyd)", classes="settings-section-title")
+                        
+                        yield Label("Spotify Username / Email:")
+                        yield Input(
+                            placeholder="Enter Spotify email or username...",
+                            id="settings-username",
+                            value=os.getenv("SPOTIPY_USERNAME", "")
+                        )
+                        
+                        yield Label("Spotify Password (for daemon auto-login):")
+                        yield Input(
+                            placeholder="Enter Spotify password...",
+                            id="settings-password",
+                            password=True,
+                            value=os.getenv("SPOTIPY_PASSWORD", "")
+                        )
+                        
+                        yield Label("Device Name:")
+                        yield Input(
+                            placeholder="RetroSpotify",
+                            id="settings-device-name",
+                            value=os.getenv("SPOTIPY_DEVICE_NAME", "RetroSpotify")
+                        )
+                        
+                        yield Label("Audio Backend:")
+                        yield Input(
+                            placeholder="pulseaudio",
+                            id="settings-backend",
+                            value=os.getenv("SPOTIPY_AUDIO_BACKEND", "pulseaudio")
+                        )
+                        
+                        yield Label("Bitrate (96, 160, 320):")
+                        yield Input(
+                            placeholder="320",
+                            id="settings-bitrate",
+                            value=os.getenv("SPOTIPY_BITRATE", "320")
+                        )
+                        
+                        yield Button("Clear Player Daemon Cache", id="btn-settings-clear-player-cache", variant="warning")
+                        
+                yield Static("", id="settings-status-message")
+                
+                with Horizontal(classes="settings-actions-row"):
+                    yield Button("Save & Apply Settings", id="btn-settings-save", variant="success")
+                    yield Button("Cancel", id="btn-settings-cancel")
+                    yield Button("Log Out / Reset Auth", id="btn-settings-logout", variant="error")
+                    
+        yield Footer()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        self.app.pop_screen()
+        if event.button.id == "btn-settings-cancel":
+            self.app.pop_screen()
+            
+        elif event.button.id == "btn-settings-clear-app-cache":
+            if os.path.exists(".spotify_cache"):
+                try:
+                    os.remove(".spotify_cache")
+                    self.notify("Web API cache cleared!")
+                    self.query_one("#settings-cache-info", Static).update("Web API Cache: 0 MB")
+                except Exception as e:
+                    self.notify(f"Could not clear cache: {e}", severity="error")
+            else:
+                self.notify("No Web API cache found.")
+                
+        elif event.button.id == "btn-settings-clear-player-cache":
+            import shutil
+            if os.path.exists("./spotifyd_cache"):
+                try:
+                    shutil.rmtree("./spotifyd_cache")
+                    os.makedirs("./spotifyd_cache", exist_ok=True)
+                    self.notify("Player daemon cache cleared!")
+                except Exception as e:
+                    self.notify(f"Could not clear cache: {e}", severity="error")
+            else:
+                self.notify("No player daemon cache found.")
+                
+        elif event.button.id == "btn-settings-logout":
+            # 1. Stop spotifyd daemon
+            self.app.stop_spotifyd()
+            
+            # 2. Delete cache files
+            if os.path.exists(".spotify_cache"):
+                try:
+                    os.remove(".spotify_cache")
+                except Exception:
+                    pass
+            import shutil
+            if os.path.exists("./spotifyd_cache"):
+                try:
+                    shutil.rmtree("./spotifyd_cache")
+                except Exception:
+                    pass
+                    
+            # 3. Clear environment and delete .env
+            os.environ.pop("SPOTIPY_CLIENT_ID", None)
+            os.environ.pop("SPOTIPY_CLIENT_SECRET", None)
+            os.environ.pop("SPOTIPY_REDIRECT_URI", None)
+            os.environ.pop("SPOTIPY_USERNAME", None)
+            os.environ.pop("SPOTIPY_PASSWORD", None)
+            os.environ.pop("SPOTIPY_DEVICE_NAME", None)
+            os.environ.pop("SPOTIPY_AUDIO_BACKEND", None)
+            os.environ.pop("SPOTIPY_BITRATE", None)
+            
+            if os.path.exists(".env"):
+                try:
+                    os.remove(".env")
+                except Exception:
+                    pass
+                    
+            if os.path.exists("spotifyd.conf"):
+                try:
+                    os.remove("spotifyd.conf")
+                except Exception:
+                    pass
+                    
+            self.app.sp = None
+            self.app.current_device_id = None
+            
+            self.notify("Logged out successfully!")
+            # Pop screens to get back to Welcome
+            while self.app.screen.id != "welcome":
+                try:
+                    self.app.pop_screen()
+                except Exception:
+                    break
+            self.app.switch_screen("welcome")
+            
+        elif event.button.id == "btn-settings-save":
+            client_id = self.query_one("#settings-client-id", Input).value.strip()
+            client_secret = self.query_one("#settings-client-secret", Input).value.strip()
+            redirect_uri = self.query_one("#settings-redirect-uri", Input).value.strip()
+            
+            username = self.query_one("#settings-username", Input).value.strip()
+            password = self.query_one("#settings-password", Input).value.strip()
+            device_name = self.query_one("#settings-device-name", Input).value.strip() or "RetroSpotify"
+            backend = self.query_one("#settings-backend", Input).value.strip() or "pulseaudio"
+            bitrate = self.query_one("#settings-bitrate", Input).value.strip() or "320"
+            
+            if not client_id:
+                self.query_one("#settings-status-message", Static).update("[red]Error: Spotify Client ID is required[/]")
+                return
+                
+            # Update environment
+            os.environ["SPOTIPY_CLIENT_ID"] = client_id
+            os.environ["SPOTIPY_REDIRECT_URI"] = redirect_uri
+            if client_secret:
+                os.environ["SPOTIPY_CLIENT_SECRET"] = client_secret
+            else:
+                os.environ.pop("SPOTIPY_CLIENT_SECRET", None)
+                
+            if username:
+                os.environ["SPOTIPY_USERNAME"] = username
+            else:
+                os.environ.pop("SPOTIPY_USERNAME", None)
+                
+            if password:
+                os.environ["SPOTIPY_PASSWORD"] = password
+            else:
+                os.environ.pop("SPOTIPY_PASSWORD", None)
+                
+            os.environ["SPOTIPY_DEVICE_NAME"] = device_name
+            os.environ["SPOTIPY_AUDIO_BACKEND"] = backend
+            os.environ["SPOTIPY_BITRATE"] = bitrate
+            
+            # Save to .env file
+            with open(".env", "w") as f:
+                f.write(f"SPOTIPY_CLIENT_ID={client_id}\n")
+                if client_secret:
+                    f.write(f"SPOTIPY_CLIENT_SECRET={client_secret}\n")
+                f.write(f"SPOTIPY_REDIRECT_URI={redirect_uri}\n")
+                if username:
+                    f.write(f"SPOTIPY_USERNAME={username}\n")
+                if password:
+                    f.write(f"SPOTIPY_PASSWORD={password}\n")
+                f.write(f"SPOTIPY_DEVICE_NAME={device_name}\n")
+                f.write(f"SPOTIPY_AUDIO_BACKEND={backend}\n")
+                f.write(f"SPOTIPY_BITRATE={bitrate}\n")
+                
+            self.notify("Settings saved!")
+            
+            # Apply changes by restarting spotifyd if it is enabled and we are not in mock mode
+            if not self.app.force_mock and self.app.use_spotifyd:
+                self.app.start_spotifyd()
+                
+            self.app.pop_screen()
 
     def on_key(self, event: events.Key) -> None:
-        if event.key in ("escape", "q", "t", "T", "enter", "space"):
+        if event.key in ("escape", "q", "t", "T"):
             self.app.pop_screen()
             event.prevent_default()
 
@@ -1271,46 +1489,148 @@ class WelcomeScreen(Screen):
             yield Static("Select your login mode to begin:", id="welcome-subtitle")
             
             with Vertical(id="options-list"):
-                yield Button("1. Quick Login (PKCE - Client ID Only)", id="btn-pkce", variant="success")
-                yield Button("2. Developer Login (Client ID + Client Secret)", id="btn-oauth")
-                yield Button("3. Explore Offline (Mock Mode)", id="btn-mock")
-                
+                 yield Button("1. Login with Spotify (Email, Google, Apple, etc.)", id="btn-login", variant="success")
+                 yield Button("2. Explore Offline (Mock Mode)", id="btn-mock")
+                 yield Button("3. About / Credits", id="btn-about")
+                 
         yield Footer()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "btn-pkce":
-            self.app.push_screen(LoginScreen(mode="pkce"))
-        elif event.button.id == "btn-oauth":
-            self.app.push_screen(LoginScreen(mode="oauth"))
+        if event.button.id == "btn-login":
+            self.app.push_screen(LoginScreen())
         elif event.button.id == "btn-mock":
             self.app.start_mock_mode()
+        elif event.button.id == "btn-about":
+            self.app.push_screen(AboutScreen())
+
+
+# About Screen Modal Dialog
+class AboutScreen(ModalScreen):
+    def compose(self) -> ComposeResult:
+        with Container(id="about-modal-container"):
+            yield Label("💚 About RetroSpotify 💚", id="about-modal-title")
+            yield Static(
+                "[bold]RetroSpotify v1.1.0[/bold]\n\n"
+                "A nostalgic, terminal-based Spotify client that blends retro command-line vibes with modern playback controls.\n\n"
+                "[bold green]Developer:[/bold green]\n"
+                "• Vaibhav Rathod (GitHub: [bold white]vaibhav-rm[/bold white])\n\n"
+                "[bold green]Key Technologies & Credits:[/bold green]\n"
+                "• [bold white]Textual[/bold white] - Modern terminal application framework for Python.\n"
+                "• [bold white]Spotipy[/bold white] - Python library for the Spotify Web API.\n"
+                "• [bold white]spotifyd[/bold white] - Lightweight background music streaming daemon.\n\n"
+                "You can log in to your standard Spotify account securely using the official browser-based authentication flow.",
+                id="about-modal-content"
+            )
+            yield Button("Close", id="btn-about-close", variant="primary")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        if event.button.id == "btn-about-close":
+            self.app.pop_screen()
+
+    def on_key(self, event: events.Key) -> None:
+        if event.key in ("escape", "enter", "space"):
+            self.app.pop_screen()
+
+
+def update_env_var(key, value):
+    lines = []
+    if os.path.exists(".env"):
+        try:
+            with open(".env", "r") as f:
+                lines = f.readlines()
+        except Exception:
+            pass
+    key_found = False
+    new_lines = []
+    for line in lines:
+        if line.strip().startswith(f"{key}="):
+            new_lines.append(f"{key}={value}\n")
+            key_found = True
+        else:
+            new_lines.append(line)
+    if not key_found:
+        new_lines.append(f"{key}={value}\n")
+    try:
+        with open(".env", "w") as f:
+            f.writelines(new_lines)
+    except Exception:
+        pass
+
+
+import urllib.parse
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import threading
+
+class CallbackHandler(BaseHTTPRequestHandler):
+    def __init__(self, callback_func, *args, **kwargs):
+        self.callback_func = callback_func
+        super().__init__(*args, **kwargs)
+
+    def log_message(self, format, *args):
+        # Suppress logging to keep stdin/stdout clean
+        pass
+
+    def do_GET(self):
+        parsed_path = urllib.parse.urlparse(self.path)
+        if parsed_path.path == "/callback":
+            self.send_response(200)
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+            
+            # Send success response to browser
+            html = """
+            <html>
+            <head>
+                <title>RetroSpotify Login Successful</title>
+                <style>
+                    body { background: #121212; color: #ffffff; font-family: sans-serif; text-align: center; padding-top: 50px; }
+                    h1 { color: #1db954; }
+                    p { color: #b3b3b3; }
+                </style>
+            </head>
+            <body>
+                <h1>💚 RetroSpotify Login Successful! </h1>
+                <p>You have successfully logged in. You can close this browser tab and return to the terminal.</p>
+            </body>
+            </html>
+            """
+            self.wfile.write(html.encode("utf-8"))
+            
+            host = self.headers.get("Host", "127.0.0.1:8888")
+            full_url = f"http://{host}{self.path}"
+            
+            # Trigger the text app callback
+            self.callback_func(full_url)
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+def make_handler(callback_func):
+    class CustomCallbackHandler(CallbackHandler):
+        def __init__(self, *args, **kwargs):
+            super().__init__(callback_func, *args, **kwargs)
+    return CustomCallbackHandler
 
 
 # Login Configuration Screen
 class LoginScreen(Screen):
-    def __init__(self, mode: str = "pkce", *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         kwargs["id"] = "login"
         super().__init__(*args, **kwargs)
-        self.mode = mode
         self.auth_manager = None
         self.auth_url = ""
+        self.http_server = None
+        self.server_thread = None
         
     def compose(self) -> ComposeResult:
         yield Header()
         with Container(id="login-container"):
-            yield Static(f"Spotify Authentication ({self.mode.upper()})", id="login-title")
+            yield Static("Spotify Email Login 📧", id="login-title")
             
             # Credentials Step Block
             with Vertical(id="step-credentials"):
-                yield Label("Spotify Client ID:")
-                yield Input(placeholder="Enter Client ID...", id="input-client-id", value=os.getenv("SPOTIPY_CLIENT_ID", ""))
-                
-                if self.mode == "oauth":
-                    yield Label("Spotify Client Secret:")
-                    yield Input(placeholder="Enter Client Secret...", id="input-client-secret", password=True, value=os.getenv("SPOTIPY_CLIENT_SECRET", ""))
-                    
-                yield Label("Redirect URI:")
-                yield Input(placeholder="http://127.0.0.1:8888/callback", id="input-redirect-uri", value=os.getenv("SPOTIPY_REDIRECT_URI", "http://127.0.0.1:8888/callback"))
+                yield Label("Spotify Email / Username (Optional):")
+                yield Input(placeholder="Enter Spotify email...", id="input-username", value=os.getenv("SPOTIPY_USERNAME", ""))
                 
                 yield Static("", id="login-status-credentials")
                 
@@ -1337,21 +1657,94 @@ class LoginScreen(Screen):
                 
         yield Footer()
 
+    def on_unmount(self) -> None:
+        self.stop_callback_server()
+
+    def start_callback_server(self, redirect_uri: str) -> None:
+        try:
+            parsed = urllib.parse.urlparse(redirect_uri)
+            host = parsed.hostname or "127.0.0.1"
+            port = parsed.port or 8888
+            
+            def on_redirect_received(full_url):
+                self.app.call_from_thread(self.handle_auto_login, full_url)
+                
+            handler_class = make_handler(on_redirect_received)
+            self.http_server = HTTPServer((host, port), handler_class)
+            
+            def run_server():
+                try:
+                    if self.http_server:
+                        self.http_server.handle_request()
+                except Exception:
+                    pass
+                finally:
+                    if self.http_server:
+                        try:
+                            self.http_server.server_close()
+                        except Exception:
+                            pass
+                        self.http_server = None
+                        
+            self.server_thread = threading.Thread(target=run_server, daemon=True)
+            self.server_thread.start()
+            self.query_one("#login-status-authorize", Static).update("[green]⚡ Waiting for browser login redirect on port " + str(port) + "...[/]")
+        except Exception:
+            self.query_one("#login-status-authorize", Static).update("[yellow]Note: Port in use. Please paste the redirect URL manually below.[/]")
+
+    def stop_callback_server(self) -> None:
+        if self.http_server:
+            try:
+                self.http_server.server_close()
+            except Exception:
+                pass
+            self.http_server = None
+
+    def handle_auto_login(self, full_url: str) -> None:
+        try:
+            input_field = self.query_one("#input-redirected-url", Input)
+            input_field.value = full_url
+            self.notify("Login redirect captured automatically!")
+            self.action_connect()
+        except Exception:
+            pass
+
+    def action_connect(self) -> None:
+        redirected_url = self.query_one("#input-redirected-url", Input).value.strip()
+        if not redirected_url:
+            self.query_one("#login-status-authorize", Static).update("[red]Error: Redirect URL is required[/]")
+            return
+            
+        self.query_one("#login-status-authorize", Static).update("[yellow]Exchanging code for token...[/]")
+        self.stop_callback_server()
+        
+        async def exchange_token():
+            try:
+                def do_exchange():
+                    code = self.auth_manager.parse_response_code(redirected_url)
+                    if isinstance(self.auth_manager, SpotifyPKCE):
+                        return self.auth_manager.get_access_token(code)
+                    else:
+                        return self.auth_manager.get_access_token(code, as_dict=False)
+                    
+                token = await asyncio.to_thread(do_exchange)
+                if token:
+                    await self.app.initialize_spotify(self.auth_manager)
+                else:
+                    self.query_one("#login-status-authorize", Static).update("[red]Error: Could not retrieve access token.[/]")
+            except Exception as e:
+                self.query_one("#login-status-authorize", Static).update(f"[red]Error exchanging code: {e}[/]")
+                
+        asyncio.create_task(exchange_token())
+
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-cancel-credentials":
+            self.stop_callback_server()
             self.app.pop_screen()
             
         elif event.button.id == "btn-next":
-            client_id = self.query_one("#input-client-id", Input).value.strip()
-            redirect_uri = self.query_one("#input-redirect-uri", Input).value.strip()
-            client_secret = ""
-            if self.mode == "oauth":
-                client_secret = self.query_one("#input-client-secret", Input).value.strip()
-                
-            if not client_id:
-                self.query_one("#login-status-credentials", Static).update("[red]Error: Client ID is required[/]")
-                return
-                
+            username = self.query_one("#input-username", Input).value.strip()
+            
             self.query_one("#login-status-credentials", Static).update("[yellow]Generating authorization link...[/]")
             
             # Delete stale cache to prevent "invalid_grant: Refresh token revoked"
@@ -1363,25 +1756,31 @@ class LoginScreen(Screen):
             
             # Save environment variables and config files (only when not in mock/test mode)
             if not self.app.force_mock:
-                os.environ["SPOTIPY_CLIENT_ID"] = client_id
-                os.environ["SPOTIPY_REDIRECT_URI"] = redirect_uri
-                if client_secret:
-                    os.environ["SPOTIPY_CLIENT_SECRET"] = client_secret
+                if username:
+                    os.environ["SPOTIPY_USERNAME"] = username
+                    update_env_var("SPOTIPY_USERNAME", username)
                 else:
-                    os.environ.pop("SPOTIPY_CLIENT_SECRET", None)
-                    
-                with open(".env", "w") as f:
-                    f.write(f"SPOTIPY_CLIENT_ID={client_id}\n")
-                    if client_secret:
-                        f.write(f"SPOTIPY_CLIENT_SECRET={client_secret}\n")
-                    f.write(f"SPOTIPY_REDIRECT_URI={redirect_uri}\n")
-                
+                    os.environ.pop("SPOTIPY_USERNAME", None)
+                    if os.path.exists(".env"):
+                        try:
+                            with open(".env", "r") as f:
+                                lines = f.readlines()
+                            new_lines = [line for line in lines if not line.strip().startswith("SPOTIPY_USERNAME=")]
+                            with open(".env", "w") as f:
+                                f.writelines(new_lines)
+                        except Exception:
+                            pass
+            
+            client_id = os.getenv("SPOTIPY_CLIENT_ID") or "906b96c8bfe0473792881c6b128c560b"
+            client_secret = os.getenv("SPOTIPY_CLIENT_SECRET", "")
+            redirect_uri = os.getenv("SPOTIPY_REDIRECT_URI") or "http://127.0.0.1:8888/callback"
+            
             scope = "user-read-playback-state user-modify-playback-state user-read-currently-playing playlist-read-private user-library-read user-read-private user-read-email"
             try:
-                if self.mode == "pkce":
-                    self.auth_manager = SpotifyPKCE(client_id=client_id, redirect_uri=redirect_uri, scope=scope, cache_path=".spotify_cache")
+                if client_secret:
+                    self.auth_manager = SpotifyOAuth(client_id=client_id, client_secret=client_secret, redirect_uri=redirect_uri, scope=scope, cache_path=".spotify_cache", username=username)
                 else:
-                    self.auth_manager = SpotifyOAuth(client_id=client_id, client_secret=client_secret, redirect_uri=redirect_uri, scope=scope, cache_path=".spotify_cache")
+                    self.auth_manager = SpotifyPKCE(client_id=client_id, redirect_uri=redirect_uri, scope=scope, cache_path=".spotify_cache", username=username)
                 
                 self.auth_url = self.auth_manager.get_authorize_url()
                 
@@ -1389,6 +1788,9 @@ class LoginScreen(Screen):
                 self.query_one("#auth-url-display", Input).value = self.auth_url
                 self.query_one("#step-credentials").add_class("hidden")
                 self.query_one("#step-authorize").remove_class("hidden")
+                
+                # Start callback listener server
+                self.start_callback_server(redirect_uri)
                 
                 # Try opening the browser in background without blocking
                 open_browser_silently(self.auth_url)
@@ -1402,37 +1804,13 @@ class LoginScreen(Screen):
                 
         elif event.button.id == "btn-back":
             # Switch back to credentials step
+            self.stop_callback_server()
             self.query_one("#step-authorize").add_class("hidden")
             self.query_one("#step-credentials").remove_class("hidden")
             self.query_one("#login-status-credentials", Static).update("")
             
         elif event.button.id == "btn-connect":
-            redirected_url = self.query_one("#input-redirected-url", Input).value.strip()
-            if not redirected_url:
-                self.query_one("#login-status-authorize", Static).update("[red]Error: Redirect URL is required[/]")
-                return
-                
-            self.query_one("#login-status-authorize", Static).update("[yellow]Exchanging code for token...[/]")
-            
-            async def exchange_token():
-                try:
-                    # Run the token exchange in a thread to keep the TUI smooth
-                    def do_exchange():
-                        code = self.auth_manager.parse_response_code(redirected_url)
-                        if self.mode == "pkce":
-                            return self.auth_manager.get_access_token(code)
-                        else:
-                            return self.auth_manager.get_access_token(code, as_dict=False)
-                        
-                    token = await asyncio.to_thread(do_exchange)
-                    if token:
-                        await self.app.initialize_spotify(self.auth_manager)
-                    else:
-                        self.query_one("#login-status-authorize", Static).update("[red]Error: Could not retrieve access token.[/]")
-                except Exception as e:
-                    self.query_one("#login-status-authorize", Static).update(f"[red]Error: {e}[/]")
-                    
-            asyncio.create_task(exchange_token())
+            self.action_connect()
 
 
 # Main Player Dashboard Screen
@@ -1534,6 +1912,8 @@ class RetroSpotifyApp(App):
     SCREENS = {
         "welcome": WelcomeScreen,
         "player": MainPlayerScreen,
+        "settings": SettingsScreen,
+        "about": AboutScreen,
     }
     
     CSS = """
@@ -1857,12 +2237,12 @@ class RetroSpotifyApp(App):
     }
     
     /* Modal Screen Styles */
-    HelpScreen, DevicesScreen, SettingsScreen {
+    HelpScreen, DevicesScreen, AboutScreen {
         align: center middle;
         background: rgba(0, 0, 0, 0.7);
     }
     
-    #help-modal-container, #devices-modal-container, #settings-modal-container {
+    #help-modal-container, #devices-modal-container, #about-modal-container {
         background: #181818;
         border: round #282828;
         padding: 1 2;
@@ -1872,11 +2252,11 @@ class RetroSpotifyApp(App):
         align: center middle;
     }
     
-    #help-modal-container:focus-within, #devices-modal-container:focus-within, #settings-modal-container:focus-within {
+    #help-modal-container:focus-within, #devices-modal-container:focus-within, #about-modal-container:focus-within {
         border: round #1db954;
     }
     
-    #help-modal-title, #devices-modal-title, #settings-modal-title {
+    #help-modal-title, #devices-modal-title, #about-modal-title {
         text-style: bold;
         color: #1db954;
         margin: 0 0 1 0;
@@ -1884,7 +2264,7 @@ class RetroSpotifyApp(App):
         width: 100%;
     }
     
-    #help-modal-content, #devices-list-content, #settings-modal-content {
+    #help-modal-content, #devices-list-content, #about-modal-content {
         margin: 1 0;
         color: #ffffff;
         width: 100%;
@@ -1896,11 +2276,84 @@ class RetroSpotifyApp(App):
         width: 100%;
     }
     
-    #btn-close-help, #btn-close-settings {
+    #btn-close-help, #btn-about-close {
         width: 100%;
         margin-top: 1;
         background: #1db954;
         color: #ffffff;
+    }
+    
+    /* Settings Screen Styles */
+    #settings-scroll-container {
+        width: 100%;
+        height: 100%;
+    }
+    #settings-container {
+        background: #181818;
+        border: round #282828;
+        padding: 2 4;
+        width: 80;
+        height: auto;
+        margin: 2;
+    }
+    #settings-title {
+        text-style: bold;
+        color: #1db954;
+        margin: 0 0 1 0;
+        text-align: center;
+        width: 100%;
+    }
+    #settings-profile-header {
+        text-align: center;
+        width: 100%;
+        margin-bottom: 1;
+        color: #b3b3b3;
+    }
+    #settings-form {
+        height: auto;
+        width: 100%;
+    }
+    .settings-col {
+        width: 1fr;
+        padding: 0 2;
+        height: auto;
+    }
+    .settings-section-title {
+        text-style: bold;
+        color: #1db954;
+        margin-bottom: 1;
+    }
+    #settings-container Label {
+        color: #b3b3b3;
+        margin-top: 1;
+        text-style: bold;
+    }
+    #settings-container Input {
+        background: #121212;
+        border: solid #282828;
+        color: #ffffff;
+        margin-bottom: 1;
+    }
+    #settings-container Input:focus {
+        border: solid #1db954;
+    }
+    #settings-cache-info {
+        color: #b3b3b3;
+        margin: 1 0;
+    }
+    #settings-status-message {
+        text-align: center;
+        width: 100%;
+        margin-top: 1;
+    }
+    .settings-actions-row {
+        align: center middle;
+        margin-top: 2;
+        height: auto;
+        width: 100%;
+    }
+    .settings-actions-row Button {
+        margin: 0 1;
     }
     #btn-close-help:focus, #btn-close-settings:focus {
         background: #1ed760;
@@ -1912,23 +2365,23 @@ class RetroSpotifyApp(App):
         ("s", "toggle_play", "Play/Pause"),
         ("n", "next_track", "Next Track"),
         ("p", "previous_track", "Previous Track"),
-        ("l", "next_playlist", "Next Playlist"),
-        ("h", "previous_playlist", "Previous Playlist"),
-        ("r", "refresh", "Refresh"),
+        ("l", "next_playlist"),
+        ("h", "previous_playlist"),
+        ("r", "refresh"),
         ("/", "search", "Search"),
-        ("+", "volume_up", "Vol +"),
-        ("-", "volume_down", "Vol -"),
-        ("S", "toggle_shuffle", "Shuffle"),
-        ("R", "toggle_repeat", "Repeat"),
-        ("f", "toggle_like", "Like/Unlike"),
-        ("e", "enqueue_selected", "Enqueue"),
+        ("+", "volume_up"),
+        ("-", "volume_down"),
+        ("S", "toggle_shuffle"),
+        ("R", "toggle_repeat"),
+        ("f", "toggle_like"),
+        ("e", "enqueue_selected"),
         ("d", "switch_device", "Devices"),
-        ("a", "authenticate", "Auth Spotify"),
+        ("a", "authenticate"),
         ("T", "open_settings", "Settings"),
-        ("space", "toggle_play", "Play/Pause"),
-        ("left", "seek_backward", "Seek -10s"),
-        ("right", "seek_forward", "Seek +10s"),
-        ("b", "toggle_sidebar", "Toggle Sidebar"),
+        ("space", "toggle_play"),
+        ("left", "seek_backward"),
+        ("right", "seek_forward"),
+        ("b", "toggle_sidebar"),
         ("?", "help", "Help"),
     ]
 
@@ -1957,6 +2410,7 @@ class RetroSpotifyApp(App):
         self.shuffle_state = False
         self.repeat_state = "off"
         self.current_device_name = "RetroSpotify"
+        self.current_device_id = None
         self.audio_source = "none"
         self.use_spotifyd = True
         self.spotifyd_process = None
@@ -1965,7 +2419,33 @@ class RetroSpotifyApp(App):
         """Check if spotifyd has been authenticated."""
         if not self.use_spotifyd:
             return True
+        if os.getenv("SPOTIPY_USERNAME") and os.getenv("SPOTIPY_PASSWORD"):
+            return True
         return os.path.exists("./spotifyd_cache/oauth/credentials.json")
+
+    def generate_spotifyd_config(self) -> str:
+        """Generate spotifyd.conf based on settings."""
+        username = os.getenv("SPOTIPY_USERNAME", "")
+        password = os.getenv("SPOTIPY_PASSWORD", "")
+        device_name = os.getenv("SPOTIPY_DEVICE_NAME", "RetroSpotify")
+        backend = os.getenv("SPOTIPY_AUDIO_BACKEND", "pulseaudio")
+        bitrate = os.getenv("SPOTIPY_BITRATE", "320")
+        
+        config = ["[global]"]
+        if username:
+            config.append(f'username = "{username}"')
+        if password:
+            config.append(f'password = "{password}"')
+        
+        config.append(f'device_name = "{device_name}"')
+        config.append('cache_path = "./spotifyd_cache"')
+        config.append(f'bitrate = {bitrate}')
+        config.append(f'backend = "{backend}"')
+        
+        with open("spotifyd.conf", "w") as f:
+            f.write("\n".join(config) + "\n")
+            
+        return "spotifyd.conf"
 
     def start_spotifyd(self) -> None:
         """Start the spotifyd daemon process in the background."""
@@ -1977,13 +2457,14 @@ class RetroSpotifyApp(App):
         # Ensure cache directory exists
         os.makedirs("./spotifyd_cache", exist_ok=True)
         
-        # Build command: run spotifyd with configured cache-path and device name
+        # Generate config file
+        config_path = self.generate_spotifyd_config()
+        
+        # Build command: run spotifyd with configured config path
         cmd = [
             "./spotifyd",
             "--no-daemon",
-            "--device-name", "RetroSpotify",
-            "--cache-path", "./spotifyd_cache",
-            "--bitrate", "320"
+            "--config-path", config_path
         ]
         try:
             self.spotifyd_process = subprocess.Popen(
@@ -2081,10 +2562,11 @@ class RetroSpotifyApp(App):
             
             if client_id:
                 try:
+                    username = os.getenv("SPOTIPY_USERNAME")
                     if client_secret:
-                        auth_manager = SpotifyOAuth(client_id=client_id, client_secret=client_secret, redirect_uri=redirect_uri, scope=scope, cache_path=".spotify_cache")
+                        auth_manager = SpotifyOAuth(client_id=client_id, client_secret=client_secret, redirect_uri=redirect_uri, scope=scope, cache_path=".spotify_cache", username=username)
                     else:
-                        auth_manager = SpotifyPKCE(client_id=client_id, redirect_uri=redirect_uri, scope=scope, cache_path=".spotify_cache")
+                        auth_manager = SpotifyPKCE(client_id=client_id, redirect_uri=redirect_uri, scope=scope, cache_path=".spotify_cache", username=username)
                         
                     self.sp = spotipy.Spotify(auth_manager=auth_manager)
                     current_user = self.sp.current_user()
@@ -2413,19 +2895,17 @@ class RetroSpotifyApp(App):
                 
                 def start_spotify_playback():
                     try:
-                        # 1. Look up the RetroSpotify device ID
-                        device_id = self.get_spotifyd_device_id()
+                        # 1. Use the selected device if set, otherwise fallback to local RetroSpotify daemon
+                        device_id = getattr(self, "current_device_id", None) or self.get_spotifyd_device_id()
                         if device_id:
-                            # Start playback on RetroSpotify device
                             self.sp.start_playback(device_id=device_id, uris=[f"spotify:track:{track.id}"])
                             return True
                         else:
-                            # Fallback: try playing on active device
                             self.sp.start_playback(uris=[f"spotify:track:{track.id}"])
                             return True
                     except Exception:
                         # 2. Try transferring playback first, then retry
-                        device_id = self.get_spotifyd_device_id()
+                        device_id = getattr(self, "current_device_id", None) or self.get_spotifyd_device_id()
                         if device_id:
                             try:
                                 self.sp.transfer_playback(device_id=device_id, force_play=True)
@@ -2487,7 +2967,7 @@ class RetroSpotifyApp(App):
                 
                 def resume_spotify_playback():
                     try:
-                        device_id = self.get_spotifyd_device_id()
+                        device_id = getattr(self, "current_device_id", None) or self.get_spotifyd_device_id()
                         if device_id:
                             self.sp.start_playback(device_id=device_id)
                         else:
@@ -2865,6 +3345,9 @@ class RetroSpotifyApp(App):
                 device_id = selected_device["id"]
                 device_name = selected_device["name"]
                 
+                self.current_device_id = device_id
+                self.current_device_name = device_name
+                
                 if self.sp:
                     def do_transfer():
                         try:
@@ -2878,7 +3361,6 @@ class RetroSpotifyApp(App):
                     
                 self.notify(f"Switched playback to {device_name}")
                 self.status_message.update(f"📱 Active Device: {device_name}")
-                self.current_device_name = device_name
                 if hasattr(self, "device_indicator") and self.device_indicator:
                     self.device_indicator.update(f"🔊 {device_name}")
                 
