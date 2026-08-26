@@ -191,11 +191,19 @@ def generate_retro_synth_wav(duration: float = 30.0) -> str:
                 
     return filepath
 
+def get_spotify_cache_path() -> str:
+    """Get the active Spotify cache file path based on SPOTIPY_USERNAME environment variable"""
+    username = os.getenv("SPOTIPY_USERNAME")
+    if username:
+        return f".spotify_cache-{username}"
+    return ".spotify_cache"
+
 def check_cached_token() -> bool:
     """Check if we have a valid cached Spotify token (or can refresh it)"""
     try:
-        if os.path.exists(".spotify_cache"):
-            with open(".spotify_cache", "r") as f:
+        cache_path = get_spotify_cache_path()
+        if os.path.exists(cache_path):
+            with open(cache_path, "r") as f:
                 data = json.load(f)
                 if (data.get("access_token") and data.get("expires_at", 0) > time.time()) or data.get("refresh_token"):
                     return True
@@ -695,10 +703,27 @@ class TrackList(Static):
             is_liked = tid in getattr(self.app, "liked_track_ids", set())
             like_symbol = "[#e91429]♥[/#e91429]" if is_liked else "[dim]♡[/dim]"
             
+            is_playing_track = (self.app.current_track is not None and 
+                                 (self.app.current_track.id == track.id if (track.id and self.app.current_track.id) else 
+                                  (self.app.current_track.preview_url == track.preview_url or self.app.current_track.name == track.name)))
+            
+            play_indicator = ""
+            if is_playing_track:
+                play_indicator = "🔊" if self.app.is_playing else "⏸"
+            
             if idx == self.selected_index:
-                lines.append(f"[bold #1db954]▶ {like_symbol} {t_name} {t_artists} {duration.rjust(dur_w)}[/bold #1db954]")
+                prefix = f"▶ {play_indicator}".ljust(num_w)
+                if is_playing_track:
+                    lines.append(f"[bold #1db954]{prefix} {like_symbol} {t_name} {t_artists} {duration.rjust(dur_w)}[/bold #1db954]")
+                else:
+                    lines.append(f"[bold #1db954]▶   {like_symbol} {t_name} {t_artists} {duration.rjust(dur_w)}[/bold #1db954]")
             else:
-                lines.append(f"[dim]{track_num.ljust(num_w)}[/dim] {like_symbol} [white]{t_name}[/white] [dim]{t_artists}[/dim] [dim]{duration.rjust(dur_w)}[/dim]")
+                if is_playing_track:
+                    prefix = f"  {play_indicator}".ljust(num_w)
+                    lines.append(f"[bold white]{prefix} {like_symbol} {t_name} {t_artists} {duration.rjust(dur_w)}[/bold white]")
+                else:
+                    prefix = f"{track_num}".ljust(num_w)
+                    lines.append(f"[dim]{prefix}[/dim] {like_symbol} [white]{t_name}[/white] [dim]{t_artists}[/dim] [dim]{duration.rjust(dur_w)}[/dim]")
                 
         return "\n".join(lines)
 
@@ -826,12 +851,10 @@ class PlaylistSidebar(Static):
         if event.key == "up":
             self.select_previous()
             self.app._update_track_list()
-            self.app._stop_track()
             event.prevent_default()
         elif event.key == "down":
             self.select_next()
             self.app._update_track_list()
-            self.app._stop_track()
             event.prevent_default()
 
     def on_click(self, event: events.Click) -> None:
@@ -844,18 +867,15 @@ class PlaylistSidebar(Static):
             self.selected_index = index
             self.refresh()
             self.app._update_track_list()
-            self.app._stop_track()
 
     def on_mouse_scroll_down(self, event: events.MouseScrollDown) -> None:
         if self.select_next():
             self.app._update_track_list()
-            self.app._stop_track()
             event.prevent_default()
 
     def on_mouse_scroll_up(self, event: events.MouseScrollUp) -> None:
         if self.select_previous():
             self.app._update_track_list()
-            self.app._stop_track()
             event.prevent_default()
 
 # Now Playing Widget
@@ -898,19 +918,25 @@ class NowPlaying(Static):
         is_liked = tid in getattr(self.app, "liked_track_ids", set())
         like_indicator = " [#e91429]♥[/]" if is_liked else ""
         
-        # Audio Visualizer section
+        # Audio Visualizer section (vertical ASCII equalizer)
         if self.app.is_playing:
-            visualizer_chars = [" ", "▂", "▃", "▄", "▅", "▆", "▇", "█"]
-            bands = []
-            for _ in range(12):
-                h = random.choice(visualizer_chars)
-                bands.append(f"[#1db954]{h}[/]")
-            visualizer_str = " ".join(bands)
-            visualizer_display = f"\n\n[bold white]EQ:[/] {visualizer_str}"
+            heights = [random.randint(1, 4) for _ in range(6)]
+            eq_lines = []
+            for r in reversed(range(1, 5)):
+                row_chars = []
+                for h in heights:
+                    if h >= r:
+                        row_chars.append("█")
+                    elif h + 1 == r:
+                        row_chars.append("▄")
+                    else:
+                        row_chars.append(" ")
+                eq_lines.append("[#1db954]" + "  ".join(row_chars) + "[/]")
+            visualizer_display = "\n" + "\n".join(eq_lines)
         else:
-            visualizer_display = "\n\n[dim]EQ: ▂ ▂ ▂ ▂ ▂ ▂ ▂ ▂ ▂ ▂ ▂ ▂[/dim]"
+            visualizer_display = "\n\n\n\n[dim]▄  ▄  ▄  ▄  ▄  ▄[/dim]"
             
-        return f"[bold white]{track_name}{like_indicator}[/bold white]\n[#b3b3b3]by {artists}[/#b3b3b3]\n\n{audio_info}{visualizer_display}"
+        return f"[bold white]{track_name}{like_indicator}[/bold white]\n[#b3b3b3]by {artists}[/#b3b3b3]\n\n{audio_info}\n{visualizer_display}"
 
 # Volume & Control Widget
 class VolumeWidget(Static):
@@ -935,6 +961,33 @@ class VolumeWidget(Static):
             rep_status = "[dim]REP[/]"
         
         return f"\n{vol_line}\n\n{shuf_status}   {rep_status}"
+
+    def on_click(self, event: events.Click) -> None:
+        if event.y == 1:
+            bar_start = 3
+            vol_width = 10
+            if bar_start <= event.x < bar_start + vol_width:
+                click_fraction = (event.x - bar_start) / vol_width
+                target_volume = int(click_fraction * 100)
+                target_volume = round(target_volume / 10) * 10
+                target_volume = max(0, min(100, target_volume))
+                
+                self.app.music_player.set_volume(target_volume)
+                self.volume = self.app.music_player.volume
+                self.app.notify(f"Volume: {self.volume}%")
+                if self.app.sp and getattr(self.app, "audio_source", "none") == "connect":
+                    def set_spotify_volume():
+                        try:
+                            self.app.sp.volume(self.volume)
+                        except Exception:
+                            pass
+                    import threading
+                    threading.Thread(target=set_spotify_volume, daemon=True).start()
+        elif event.y == 3:
+            if 0 <= event.x < 4:
+                self.app.action_toggle_shuffle()
+            elif 7 <= event.x < 12:
+                self.app.action_toggle_repeat()
 
 def open_browser_silently(url):
     import os
@@ -1057,7 +1110,7 @@ class SettingsScreen(Screen):
             except Exception:
                 pass
                 
-        profile_header = f"👤 Account: [white]{username}[/] ({email}) • Plan: [white]{plan.upper()}[/] • Country: [white]{country}[/]"
+        profile_header = f"👤 Account: {username} ({email}) • Plan: {plan.upper()} • Country: {country}"
         
         with ScrollableContainer(id="settings-scroll-container"):
             with Container(id="settings-container"):
@@ -1094,9 +1147,10 @@ class SettingsScreen(Screen):
                         # App cache settings
                         yield Label("App Cache Size:")
                         cache_size_str = "0 MB"
-                        if os.path.exists(".spotify_cache"):
+                        cache_path = get_spotify_cache_path()
+                        if os.path.exists(cache_path):
                             try:
-                                size = os.path.getsize(".spotify_cache")
+                                size = os.path.getsize(cache_path)
                                 cache_size_str = f"{size / 1024 / 1024:.2f} MB"
                             except Exception:
                                 pass
@@ -1107,14 +1161,14 @@ class SettingsScreen(Screen):
                     with Vertical(classes="settings-col"):
                         yield Static("🔊 Local Player Daemon (spotifyd)", classes="settings-section-title")
                         
-                        yield Label("Spotify Username / Email:")
+                        yield Label("Spotify Username / Email:", id="settings-username-label")
                         yield Input(
                             placeholder="Enter Spotify email or username...",
                             id="settings-username",
                             value=os.getenv("SPOTIPY_USERNAME", "")
                         )
                         
-                        yield Label("Spotify Password (for daemon auto-login):")
+                        yield Label("Spotify Password (for daemon auto-login):", id="settings-password-label")
                         yield Input(
                             placeholder="Enter Spotify password...",
                             id="settings-password",
@@ -1159,9 +1213,10 @@ class SettingsScreen(Screen):
             self.app.pop_screen()
             
         elif event.button.id == "btn-settings-clear-app-cache":
-            if os.path.exists(".spotify_cache"):
+            cache_path = get_spotify_cache_path()
+            if os.path.exists(cache_path):
                 try:
-                    os.remove(".spotify_cache")
+                    os.remove(cache_path)
                     self.notify("Web API cache cleared!")
                     self.query_one("#settings-cache-info", Static).update("Web API Cache: 0 MB")
                 except Exception as e:
@@ -1186,9 +1241,10 @@ class SettingsScreen(Screen):
             self.app.stop_spotifyd()
             
             # 2. Delete cache files
-            if os.path.exists(".spotify_cache"):
+            cache_path = get_spotify_cache_path()
+            if os.path.exists(cache_path):
                 try:
-                    os.remove(".spotify_cache")
+                    os.remove(cache_path)
                 except Exception:
                     pass
             import shutil
@@ -1244,7 +1300,7 @@ class SettingsScreen(Screen):
             bitrate = self.query_one("#settings-bitrate", Input).value.strip() or "320"
             
             if not client_id:
-                self.query_one("#settings-status-message", Static).update("[red]Error: Spotify Client ID is required[/]")
+                self.query_one("#settings-status-message", Static).update("Error: Spotify Client ID is required")
                 return
                 
             # Update environment
@@ -1510,7 +1566,7 @@ class AboutScreen(ModalScreen):
         with Container(id="about-modal-container"):
             yield Label("💚 About RetroSpotify 💚", id="about-modal-title")
             yield Static(
-                "[bold]RetroSpotify v1.1.0[/bold]\n\n"
+                "[bold]RetroSpotify v1.2.0[/bold]\n\n"
                 "A nostalgic, terminal-based Spotify client that blends retro command-line vibes with modern playback controls.\n\n"
                 "[bold green]Developer:[/bold green]\n"
                 "• Vaibhav Rathod (GitHub: [bold white]vaibhav-rm[/bold white])\n\n"
@@ -1747,13 +1803,6 @@ class LoginScreen(Screen):
             
             self.query_one("#login-status-credentials", Static).update("[yellow]Generating authorization link...[/]")
             
-            # Delete stale cache to prevent "invalid_grant: Refresh token revoked"
-            if os.path.exists(".spotify_cache"):
-                try:
-                    os.remove(".spotify_cache")
-                except Exception:
-                    pass
-            
             # Save environment variables and config files (only when not in mock/test mode)
             if not self.app.force_mock:
                 if username:
@@ -1770,6 +1819,14 @@ class LoginScreen(Screen):
                                 f.writelines(new_lines)
                         except Exception:
                             pass
+                            
+            # Delete stale cache to prevent "invalid_grant: Refresh token revoked"
+            cache_path = get_spotify_cache_path()
+            if os.path.exists(cache_path):
+                try:
+                    os.remove(cache_path)
+                except Exception:
+                    pass
             
             client_id = os.getenv("SPOTIPY_CLIENT_ID") or "906b96c8bfe0473792881c6b128c560b"
             client_secret = os.getenv("SPOTIPY_CLIENT_SECRET", "")
@@ -1778,9 +1835,9 @@ class LoginScreen(Screen):
             scope = "user-read-playback-state user-modify-playback-state user-read-currently-playing playlist-read-private user-library-read user-read-private user-read-email"
             try:
                 if client_secret:
-                    self.auth_manager = SpotifyOAuth(client_id=client_id, client_secret=client_secret, redirect_uri=redirect_uri, scope=scope, cache_path=".spotify_cache", username=username)
+                    self.auth_manager = SpotifyOAuth(client_id=client_id, client_secret=client_secret, redirect_uri=redirect_uri, scope=scope, cache_path=get_spotify_cache_path(), username=username)
                 else:
-                    self.auth_manager = SpotifyPKCE(client_id=client_id, redirect_uri=redirect_uri, scope=scope, cache_path=".spotify_cache", username=username)
+                    self.auth_manager = SpotifyPKCE(client_id=client_id, redirect_uri=redirect_uri, scope=scope, cache_path=get_spotify_cache_path(), username=username)
                 
                 self.auth_url = self.auth_manager.get_authorize_url()
                 
@@ -1922,7 +1979,7 @@ class RetroSpotifyApp(App):
         color: #b3b3b3;
     }
     
-    WelcomeScreen, LoginScreen {
+    WelcomeScreen, LoginScreen, SpotifydAuthScreen {
         align: center middle;
     }
     
@@ -2126,6 +2183,15 @@ class RetroSpotifyApp(App):
         border: round #1db954;
     }
     
+    #playlist-sidebar, #track-list-container, #album-art-container, #now-playing-container, #progress-container, #volume-container {
+        border-title-color: #888888;
+        border-title-align: left;
+    }
+    #playlist-sidebar:focus-within, #track-list-container:focus-within, #album-art-container:focus-within, #now-playing-container:focus-within, #progress-container:focus-within, #volume-container:focus-within {
+        border-title-color: #1ed760;
+        border-title-style: bold;
+    }
+    
     #status-bar {
         height: 3;
         background: #000000;
@@ -2242,7 +2308,17 @@ class RetroSpotifyApp(App):
         background: rgba(0, 0, 0, 0.7);
     }
     
-    #help-modal-container, #devices-modal-container, #about-modal-container {
+    #help-modal-container {
+        background: #181818;
+        border: round #282828;
+        padding: 1 2;
+        width: 65;
+        height: auto;
+        max-height: 95%;
+        overflow-y: auto;
+    }
+    
+    #devices-modal-container, #about-modal-container {
         background: #181818;
         border: round #282828;
         padding: 1 2;
@@ -2287,14 +2363,15 @@ class RetroSpotifyApp(App):
     #settings-scroll-container {
         width: 100%;
         height: 100%;
+        align: center middle;
     }
     #settings-container {
         background: #181818;
         border: round #282828;
         padding: 2 4;
-        width: 80;
+        width: 100%;
+        max-width: 80;
         height: auto;
-        margin: 2;
     }
     #settings-title {
         text-style: bold;
@@ -2318,6 +2395,19 @@ class RetroSpotifyApp(App):
         padding: 0 2;
         height: auto;
     }
+    
+    .narrow-tablet #settings-form, .narrow-mobile #settings-form {
+        layout: vertical;
+    }
+    .narrow-tablet .settings-col, .narrow-mobile .settings-col {
+        width: 100%;
+        padding: 0;
+    }
+    
+    #settings-username-label, #settings-username, #settings-password-label, #settings-password {
+        display: none;
+    }
+    
     .settings-section-title {
         text-style: bold;
         color: #1db954;
@@ -2414,6 +2504,8 @@ class RetroSpotifyApp(App):
         self.audio_source = "none"
         self.use_spotifyd = True
         self.spotifyd_process = None
+        self.playing_playlist = None
+        self.playing_track_index = 0
 
     def check_spotifyd_authenticated(self) -> bool:
         """Check if spotifyd has been authenticated."""
@@ -2551,11 +2643,17 @@ class RetroSpotifyApp(App):
 
     async def on_mount(self) -> None:
         if not self.force_mock:
-            asyncio.create_task(asyncio.to_thread(ensure_spotifyd_binary))
+            async def download_and_start_spotifyd():
+                success = await asyncio.to_thread(ensure_spotifyd_binary)
+                if success:
+                    if self.sp and self.check_spotifyd_authenticated():
+                        if not self.spotifyd_process or self.spotifyd_process.poll() is not None:
+                            self.start_spotifyd()
+            asyncio.create_task(download_and_start_spotifyd())
 
         initialized = False
         if not self.force_mock and check_cached_token() and SPOTIPY_AVAILABLE:
-            client_id = os.getenv("SPOTIPY_CLIENT_ID")
+            client_id = os.getenv("SPOTIPY_CLIENT_ID") or "906b96c8bfe0473792881c6b128c560b"
             client_secret = os.getenv("SPOTIPY_CLIENT_SECRET")
             redirect_uri = os.getenv("SPOTIPY_REDIRECT_URI", "http://127.0.0.1:8888/callback")
             scope = "user-read-playback-state user-modify-playback-state user-read-currently-playing playlist-read-private user-library-read user-read-private user-read-email"
@@ -2564,9 +2662,9 @@ class RetroSpotifyApp(App):
                 try:
                     username = os.getenv("SPOTIPY_USERNAME")
                     if client_secret:
-                        auth_manager = SpotifyOAuth(client_id=client_id, client_secret=client_secret, redirect_uri=redirect_uri, scope=scope, cache_path=".spotify_cache", username=username)
+                        auth_manager = SpotifyOAuth(client_id=client_id, client_secret=client_secret, redirect_uri=redirect_uri, scope=scope, cache_path=get_spotify_cache_path(), username=username)
                     else:
-                        auth_manager = SpotifyPKCE(client_id=client_id, redirect_uri=redirect_uri, scope=scope, cache_path=".spotify_cache", username=username)
+                        auth_manager = SpotifyPKCE(client_id=client_id, redirect_uri=redirect_uri, scope=scope, cache_path=get_spotify_cache_path(), username=username)
                         
                     self.sp = spotipy.Spotify(auth_manager=auth_manager)
                     current_user = self.sp.current_user()
@@ -2579,9 +2677,10 @@ class RetroSpotifyApp(App):
                         initialized = True
                 except Exception:
                     # Stale or revoked token in cache, clear it
-                    if os.path.exists(".spotify_cache"):
+                    cache_path = get_spotify_cache_path()
+                    if os.path.exists(cache_path):
                         try:
-                            os.remove(".spotify_cache")
+                            os.remove(cache_path)
                         except Exception:
                             pass
         
@@ -2875,6 +2974,15 @@ class RetroSpotifyApp(App):
             self._resume_track()
             return
             
+        # Update playing playlist context if track is in the viewed playlist
+        viewed_pl = self.sidebar.get_selected_playlist()
+        if viewed_pl and track in viewed_pl.get('items', []):
+            self.playing_playlist = viewed_pl
+            try:
+                self.playing_track_index = viewed_pl['items'].index(track)
+            except ValueError:
+                self.playing_track_index = 0
+
         self.current_track = track
         self.now_playing_info.set_track(track)
         
@@ -3092,13 +3200,16 @@ class RetroSpotifyApp(App):
     def action_toggle_play(self):
         if self.screen.id != "player":
             return
-        current_track = self.track_list.get_selected_track()
-        if current_track:
-            if self.is_playing and self.current_track == current_track:
+        if self.current_track:
+            if self.is_playing:
                 self._pause_track()
-            elif not self.is_playing and self.current_track == current_track:
-                self._resume_track()
             else:
+                self._resume_track()
+        else:
+            current_track = self.track_list.get_selected_track()
+            if current_track:
+                self.playing_playlist = self.sidebar.get_selected_playlist()
+                self.playing_track_index = self.track_list.selected_index
                 self._play_track(current_track)
 
     def action_next_track(self):
@@ -3123,36 +3234,54 @@ class RetroSpotifyApp(App):
             self._play_track(next_track)
             return
 
+        # Initialize playing_playlist if not already set
+        if not getattr(self, "playing_playlist", None):
+            self.playing_playlist = self.sidebar.get_selected_playlist()
+            self.playing_track_index = self.track_list.selected_index
+
+        if not self.playing_playlist:
+            return
+
+        tracks = self.playing_playlist.get('items', [])
+        if not tracks:
+            self._stop_track()
+            return
+
         # 2. Otherwise handle Shuffle
         if self.shuffle_state:
-            current_playlist = self.sidebar.get_selected_playlist()
-            if current_playlist:
-                tracks = current_playlist.get('items', [])
-                if tracks:
-                    rand_idx = random.randint(0, len(tracks) - 1)
-                    self.track_list.selected_index = rand_idx
-                    self.track_list.refresh()
-                    if self.is_playing:
-                        self._play_track(tracks[rand_idx])
-                    return
+            rand_idx = random.randint(0, len(tracks) - 1)
+            self.playing_track_index = rand_idx
+            
+            # Sync TUI cursor if viewing the same playlist
+            if self.sidebar.get_selected_playlist() == self.playing_playlist:
+                self.track_list.selected_index = rand_idx
+                self.track_list.refresh()
+                
+            if self.is_playing:
+                self._play_track(tracks[rand_idx])
+            return
         
         # 3. Regular next track in the list
-        current_playlist = self.sidebar.get_selected_playlist()
-        tracks = current_playlist.get('items', []) if current_playlist else []
-        if self.repeat_state == 'context' and tracks:
+        if self.repeat_state == 'context':
             # Wrap around index
-            self.track_list.selected_index = (self.track_list.selected_index + 1) % len(tracks)
-            self.track_list.refresh()
+            self.playing_track_index = (self.playing_track_index + 1) % len(tracks)
+            
+            if self.sidebar.get_selected_playlist() == self.playing_playlist:
+                self.track_list.selected_index = self.playing_track_index
+                self.track_list.refresh()
+                
             if self.is_playing:
-                current_track = self.track_list.get_selected_track()
-                if current_track:
-                    self._play_track(current_track)
+                self._play_track(tracks[self.playing_track_index])
         else:
-            if self.track_list.select_next():
+            if self.playing_track_index < len(tracks) - 1:
+                self.playing_track_index += 1
+                
+                if self.sidebar.get_selected_playlist() == self.playing_playlist:
+                    self.track_list.selected_index = self.playing_track_index
+                    self.track_list.refresh()
+                    
                 if self.is_playing:
-                    current_track = self.track_list.get_selected_track()
-                    if current_track:
-                        self._play_track(current_track)
+                    self._play_track(tracks[self.playing_track_index])
             else:
                 self._stop_track()
                 self.status_message.update("⏹️ Playlist ended")
@@ -3160,25 +3289,40 @@ class RetroSpotifyApp(App):
     def action_previous_track(self):
         if self.screen.id != "player":
             return
-        if self.track_list.select_previous():
+            
+        # Initialize playing_playlist if not already set
+        if not getattr(self, "playing_playlist", None):
+            self.playing_playlist = self.sidebar.get_selected_playlist()
+            self.playing_track_index = self.track_list.selected_index
+
+        if not self.playing_playlist:
+            return
+
+        tracks = self.playing_playlist.get('items', [])
+        if not tracks:
+            return
+
+        if self.playing_track_index > 0:
+            self.playing_track_index -= 1
+            
+            if self.sidebar.get_selected_playlist() == self.playing_playlist:
+                self.track_list.selected_index = self.playing_track_index
+                self.track_list.refresh()
+                
             if self.is_playing:
-                current_track = self.track_list.get_selected_track()
-                if current_track:
-                    self._play_track(current_track)
+                self._play_track(tracks[self.playing_track_index])
 
     def action_next_playlist(self):
         if self.screen.id != "player":
             return
         if self.sidebar.select_next():
             self._update_track_list()
-            self._stop_track()
 
     def action_previous_playlist(self):
         if self.screen.id != "player":
             return
         if self.sidebar.select_previous():
             self._update_track_list()
-            self._stop_track()
 
     def action_refresh(self):
         if self.screen.id != "player":
