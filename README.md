@@ -45,41 +45,32 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Configure Spotify API Application
+### 2. Launch & Instant Login (Zero-Configuration)
 
-RetroSpotify communicates with Spotify securely using the Web API. To authorize the client:
+RetroSpotify includes a **pre-configured default Client ID**, meaning you do NOT need to create a Spotify Developer application or configure any credentials to log in!
 
-1. Visit the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/) and log in.
-2. Click **Create App**. Name the app `RetroSpotify`.
-3. **CRITICAL Redirect URI**: In the Redirect URIs field, add:
-   `http://127.0.0.1:8888/callback`
-   *(Ensure this matches exactly, including port and path. This allows the local authentication listener to capture your token).*
-4. Save the app, go to Settings, and copy your **Client ID**.
+1. Start the app:
+   ```bash
+   python main.py
+   ```
+2. Click **1. Login with Spotify**.
+3. (Optional) Enter your Spotify email/username, then click **Next**.
+4. RetroSpotify will launch a local callback listener and open your default web browser automatically.
+5. In your browser, log in to Spotify and click **Authorize**.
+6. The TUI will automatically detect the success signal, cache your login tokens locally, download/spin up the `spotifyd` background daemon, and load your library instantly!
 
-### 3. Launch and Log In
+---
 
-Run the application:
+### ⚙️ Custom API Credentials (Optional)
 
-```bash
-python main.py
-```
-
-The application will launch directly into the **Welcome & Authentication Screen**. Follow these simple login steps:
-
-#### Method A: Quick Login (PKCE) - *Recommended*
-1. Press the **Quick Login (PKCE)** button in the UI.
-2. Enter your Spotify **Client ID** when prompted.
-3. RetroSpotify will launch a secure background server and open your web browser.
-4. Log in to Spotify in your browser and authorize the application.
-5. Upon authorization, the app will log in automatically, spin up the local `spotifyd` daemon, and cache your token for future sessions.
-
-#### Method B: Configuration File (Optional)
-If you prefer not to enter details in the TUI, create a `.env` file in the root of the project:
-
-```env
-SPOTIPY_CLIENT_ID=your_client_id_here
-SPOTIPY_REDIRECT_URI=http://127.0.0.1:8888/callback
-```
+If you prefer to use your own Spotify Developer App credentials:
+1. Register an app on the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/) and set the Redirect URI to `http://127.0.0.1:8888/callback`.
+2. Configure them inside the app's **Settings (⚙️)** panel, or create a `.env` file in the root directory:
+   ```env
+   SPOTIPY_CLIENT_ID=your_client_id_here
+   SPOTIPY_CLIENT_SECRET=your_client_secret_here
+   SPOTIPY_REDIRECT_URI=http://127.0.0.1:8888/callback
+   ```
 
 ---
 

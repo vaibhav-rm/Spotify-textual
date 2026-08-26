@@ -211,53 +211,47 @@ pip install -r requirements.txt</code></pre>
         <div class="container">
             <div class="section-header">
                 <h2>Spotify API Credentials & Login Setup</h2>
-                <p>Learn how to configure your developer account and authenticate RetroSpotify properly.</p>
+                <p>Learn how to authenticate RetroSpotify instantly using PKCE or custom credentials.</p>
             </div>
             
             <div class="setup-grid" style="grid-template-columns: 1fr; gap: 2.5rem; max-width: 900px; margin-left: auto; margin-right: auto;">
-                <!-- Step 1: Spotify App Registration -->
+                <!-- Step 1: Out-of-the-box Login -->
                 <div class="setup-card" style="background: var(--bg-card); cursor: default;">
                     <h3 style="display: flex; align-items: center; gap: 0.75rem; font-size: 1.6rem; color: var(--text-white);">
-                        <span style="color: var(--spotify-green); font-size: 1.8rem;"><i class="fab fa-spotify"></i></span>
-                        1. Register App on Spotify Developer Dashboard
+                        <span style="color: var(--spotify-green); font-size: 1.8rem;"><i class="fas fa-magic"></i></span>
+                        1. Instant Out-Of-The-Box Login (No Configuration Needed)
                     </h3>
                     <p style="margin-top: 1rem; color: var(--text-gray); line-height: 1.6;">
-                        Because RetroSpotify interfaces directly with the Spotify Web API, you must create a developer application to generate credentials.
+                        RetroSpotify includes a secure **pre-configured default Spotify Client ID**, so you do not need to register a developer app or manage API keys.
                     </p>
                     <ol style="margin-top: 1.25rem; padding-left: 1.25rem; display: flex; flex-direction: column; gap: 0.75rem; color: var(--text-gray);">
-                        <li>Navigate to the official <a href="https://developer.spotify.com/dashboard" target="_blank" style="color: var(--spotify-green); text-decoration: underline;">Spotify Developer Dashboard</a> and log in with your Spotify account.</li>
-                        <li>Click the <strong>"Create App"</strong> button in the top right corner.</li>
-                        <li>Fill in the fields (you can set the name to <code>RetroSpotify</code> and any description).</li>
-                        <li>
-                            <strong>CRITICAL Redirect URI:</strong> Add <code style="background: rgba(29, 185, 84, 0.15); color: var(--spotify-green); padding: 0.2rem 0.5rem; border-radius: 4px; font-weight: bold; font-family: monospace;">http://127.0.0.1:8888/callback</code> to the Redirect URIs field. This must match exactly, including the port and path.
-                        </li>
-                        <li>Check the developer terms box, save the application, and open the app settings to copy your <strong>Client ID</strong> and <strong>Client Secret</strong>.</li>
+                        <li>Launch the app using <code>python main.py</code> or your compiled standalone executable.</li>
+                        <li>On the Welcome Screen, select <strong>"1. Login with Spotify"</strong>.</li>
+                        <li>(Optional) Enter your Spotify email/username, then click <strong>"Next"</strong>.</li>
+                        <li>RetroSpotify will automatically spin up a temporary secure authentication server and open your default browser.</li>
+                        <li>Click <strong>"Authorize"</strong> on the Spotify page to link the TUI, and the client will instantly log you in and start syncing your library.</li>
                     </ol>
                 </div>
 
-                <!-- Step 2: Choosing Your Login Method -->
+                <!-- Step 2: Custom Credentials (Optional) -->
                 <div class="setup-card" style="background: var(--bg-card); cursor: default;">
                     <h3 style="display: flex; align-items: center; gap: 0.75rem; font-size: 1.6rem; color: var(--text-white);">
-                        <span style="color: var(--spotify-green); font-size: 1.8rem;"><i class="fas fa-user-lock"></i></span>
-                        2. Launch & Log In
+                        <span style="color: var(--spotify-green); font-size: 1.8rem;"><i class="fas fa-cog"></i></span>
+                        2. Use Custom Spotify App Credentials (Optional)
                     </h3>
                     <p style="margin-top: 1rem; color: var(--text-gray); line-height: 1.6;">
-                        Launch RetroSpotify using python or your compiled executable. The app launches into a visual **Welcome & Authentication Screen**.
+                        If you prefer to run RetroSpotify through your own personal Spotify Developer application:
                     </p>
-                    
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 1.5rem;">
-                        <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); padding: 1.5rem; border-radius: 12px;">
-                            <h4 style="color: var(--text-white); margin-bottom: 0.5rem;"><i class="fas fa-bolt"></i> Option A: Quick Login (PKCE)</h4>
-                            <p style="font-size: 0.9rem; color: var(--text-gray); line-height: 1.5; margin-bottom: 1rem;">
-                                Recommended for daily use. You only need your <strong>Client ID</strong>. RetroSpotify spins up a temporary secure local server, opens your default browser for authorization, and handles tokens safely.
-                            </p>
-                        </div>
-                        <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border-color); padding: 1.5rem; border-radius: 12px;">
-                            <h4 style="color: var(--text-white); margin-bottom: 0.5rem;"><i class="fas fa-key"></i> Option B: Developer Login</h4>
-                            <p style="font-size: 0.9rem; color: var(--text-gray); line-height: 1.5; margin-bottom: 1rem;">
-                                Standard OAuth login. Enter both your <strong>Client ID</strong> and <strong>Client Secret</strong>. The credentials are encrypted and stored in a local cache directory for future auto-login.
-                            </p>
-                        </div>
+                    <ol style="margin-top: 1.25rem; padding-left: 1.25rem; display: flex; flex-direction: column; gap: 0.75rem; color: var(--text-gray);">
+                        <li>Navigate to the <a href="https://developer.spotify.com/dashboard" target="_blank" style="color: var(--spotify-green); text-decoration: underline;">Spotify Developer Dashboard</a> and create a new application.</li>
+                        <li>Add <code style="background: rgba(29, 185, 84, 0.15); color: var(--spotify-green); padding: 0.2rem 0.5rem; border-radius: 4px; font-weight: bold; font-family: monospace;">http://127.0.0.1:8888/callback</code> as the Redirect URI settings.</li>
+                        <li>Inside RetroSpotify, press <kbd>Ctrl+G</kbd> (or go to Settings screen via the gear icon) and input your custom Client ID and Client Secret, or save them in a local <code>.env</code> file:</li>
+                    </ol>
+                    <div class="code-block" style="margin-top: 1rem; margin-bottom: 0;">
+                        <pre><code>SPOTIPY_CLIENT_ID=your_custom_client_id_here
+SPOTIPY_CLIENT_SECRET=your_custom_client_secret_here
+SPOTIPY_REDIRECT_URI=http://127.0.0.1:8888/callback</code></pre>
+                        <button class="copy-btn" onclick="copyCode(this)"><i class="far fa-copy"></i></button>
                     </div>
                 </div>
 
