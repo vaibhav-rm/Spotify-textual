@@ -65,7 +65,10 @@
                     
                     <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 2rem;">
                         <a href="https://github.com/vaibhav-rm/Spotify-textual/releases/tag/v1.2.0" target="_blank" class="btn btn-primary" style="padding: 0.75rem 1.5rem;">
-                            <i class="fab fa-github"></i> Get Latest Release (v1.2.0)
+                            <i class="fab fa-linux"></i> Download Linux Binary (v1.2.0)
+                        </a>
+                        <a href="https://github.com/vaibhav-rm/Spotify-textual/releases/tag/v1.2.0" target="_blank" class="btn btn-primary" style="padding: 0.75rem 1.5rem; background: #0078d7; color: white; box-shadow: 0 4px 20px rgba(0, 120, 215, 0.3);">
+                            <i class="fab fa-windows"></i> Download Windows Binary (v1.2.0)
                         </a>
                     </div>
 
@@ -210,7 +213,11 @@ pip install pyinstaller</code></pre>
                         <h3>Cross-Compile to Windows from Linux (Optional)</h3>
                         <p>If you are on Linux and want to build a Windows <code>.exe</code>, you can run the compilation using Podman or Docker with Wine:</p>
                         <div class="code-block">
-                            <pre><code>podman run --rm -v "$(pwd):/src:z" -w /src docker.io/tobix/pywine:3.11 sh -c "wine python -m pip install -r requirements.txt && wine python -m pip install pyinstaller && wine pyinstaller --clean -y retrospotify.spec"</code></pre>
+                            <pre><code>podman run --rm \
+  -v "$(pwd):/src:z" \
+  -w /src \
+  docker.io/tobix/pywine:3.11 \
+  sh -c "wine python -m pip install -r requirements.txt && wine python -m pip install pyinstaller && wine pyinstaller --clean -y retrospotify.spec"</code></pre>
                             <button class="copy-btn" onclick="copyCode(this)"><i class="far fa-copy"></i></button>
                         </div>
                     </div>
