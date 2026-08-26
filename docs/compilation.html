@@ -207,20 +207,32 @@ pip install pyinstaller</code></pre>
                 <div class="step">
                     <div class="step-num">6</div>
                     <div class="step-content">
+                        <h3>Cross-Compile to Windows from Linux (Optional)</h3>
+                        <p>If you are on Linux and want to build a Windows <code>.exe</code>, you can run the compilation using Podman or Docker with Wine:</p>
+                        <div class="code-block">
+                            <pre><code>podman run --rm -v "$(pwd):/src:z" -w /src docker.io/tobix/pywine:3.11 sh -c "wine python -m pip install -r requirements.txt && wine python -m pip install pyinstaller && wine pyinstaller --clean -y retrospotify.spec"</code></pre>
+                            <button class="copy-btn" onclick="copyCode(this)"><i class="far fa-copy"></i></button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="step">
+                    <div class="step-num">7</div>
+                    <div class="step-content">
                         <h3>Locate and Run</h3>
                         <p>The compiled executable will be stored in the <strong><code>dist/</code></strong> directory:</p>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-top: 1rem;">
                             <div>
                                 <h4 style="color: var(--text-white); margin-bottom: 0.5rem;"><i class="fab fa-linux"></i> Linux</h4>
                                 <div class="code-block" style="margin: 0;">
-                                    <pre><code>./dist/retrospotify</code></pre>
+                                    <pre><code>./dist/retrospotify-v1.2.0</code></pre>
                                     <button class="copy-btn" onclick="copyCode(this)"><i class="far fa-copy"></i></button>
                                 </div>
                             </div>
                             <div>
                                 <h4 style="color: var(--text-white); margin-bottom: 0.5rem;"><i class="fab fa-windows"></i> Windows</h4>
                                 <div class="code-block" style="margin: 0;">
-                                    <pre><code>.\dist\retrospotify.exe</code></pre>
+                                    <pre><code>.\dist\retrospotify-v1.2.0.exe</code></pre>
                                     <button class="copy-btn" onclick="copyCode(this)"><i class="far fa-copy"></i></button>
                                 </div>
                             </div>
