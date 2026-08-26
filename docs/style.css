@@ -348,6 +348,7 @@ body {
     background: radial-gradient(circle at top left, rgba(29, 185, 84, 0.1) 0%, rgba(0,0,0,0) 50%);
     opacity: 0;
     transition: var(--transition);
+    pointer-events: none;
 }
 
 .feature-card:hover {
